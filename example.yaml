@@ -1,0 +1,25 @@
+fineoffset:
+  - platform: gpio
+    pin: GPIO33
+
+text_sensor:
+  - platform: fineoffset
+    last:
+      name: Last Sensor Data
+    bad:
+      name: Bad Sensor Data (CRC)
+ 
+sensor:
+  - platform: fineoffset
+    sensor_id: 77
+    temperature:
+      name: Deck Temperature
+    humidity:
+      name: Deck Humidity
+  
+  - platform: fineoffset
+    sensor_id: 23
+    temperature:
+      name: Freezer Temperature
+    humdity:
+      name: Freezer Humditiy
