@@ -1,25 +1,120 @@
-fineoffset:
-  - platform: gpio
-    pin: GPIO33
+substitutions:
+  name: waveshare-epaper
+  friendly_name: waveshare-epaper
+
+  # entities from Home Assistant
+  weather_today_entity: weather.openweathermap
+  todays_forecast_high_entity: sensor.todays_forecast_high
+  todays_forecast_low_entity: sensor.todays_forecast_low
+  tomorrow_weather_entity: sensor.tomorrow_condition
+  tomorrow_forecast_high_entity: sensor.tomorrow_forecast_high
+  tomorrow_forecast_low_entity: sensor.tomorrow_forecast_low
+  outside_temperature_entity: sensor.weatherbug_outside_temperature
+
+external_components:
+  - source: components
+
+esphome:
+  name: "${name}"
+  friendly_name: "${friendly_name}"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+  logs:
+    resistance: ERROR
+    switch: ERROR
+    internal_temperature: ERROR
+    sensor: ERROR
+  # logs:
+  #   esp32_ble: DEBUG
+  #   bluetooth_proxy: DEBUG
+
+# IIC
+i2c:
+  scl: GPIO22
+  sda: GPIO21
+  scan: false
+  frequency: 200khz
+
+status_led:
+  pin:
+     number: GPIO2
+     inverted: false
+
+# Global variables for detecting if the display needs to be refreshed. (Thanks @paviro!)
+globals:
+  # - id: light_detected_resistance
+  #   type: int
+  #   restore_value: no
+  #   initial_value: '${light_detected_resistance}'
+  - id: data_updated
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: initial_data_received
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: recorded_display_refresh
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+binary_sensor:
+
+sensor:
+  - platform: fineoffset
+    name: Deck
+    fineoffset_id: fineoffset_radio
+    serial_no: 77
+    temperature:
+      name: Temperature
+    humidity:
+      name: Humidity
+  
+  - platform: fineoffset
+    name: Freezer
+    fineoffset_id: fineoffset_radio
+    serial_no: 23
+    temperature:
+      name: Temperature
+    humidity:
+      name: Humditiy
 
 text_sensor:
   - platform: fineoffset
-    last:
-      name: Last Sensor Data
-    bad:
-      name: Bad Sensor Data (CRC)
- 
-sensor:
-  - platform: fineoffset
-    sensor_id: 77
-    temperature:
-      name: Deck Temperature
-    humidity:
-      name: Deck Humidity
+    name: Last Sensor Data
+    type: last
   
   - platform: fineoffset
-    sensor_id: 23
-    temperature:
-      name: Freezer Temperature
-    humdity:
-      name: Freezer Humditiy
+    name: Bad Sensor Data (CRC failed)
+    type: last_bad
+
+remote_receiver:
+  - pin:
+      number: GPIO32
+      inverted: true
+    # dump: raw
+    # tolerance: 10%
+    # filter: 150us
+
+# placeholder
+switch:
+
+# allow restart through HA
+button:
+  - platform: restart
+    name: 'Restart'
+    entity_category: 'config'
+
+fineoffset:
+  - name: FineOffset Radio
+    id: fineoffset_radio
+    pin: GPIO33
+

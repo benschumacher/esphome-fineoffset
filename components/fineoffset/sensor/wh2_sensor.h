@@ -1,13 +1,18 @@
-#include "gpio_fineoffset.h"
-#include "esphome/fineoffset/core/log.h"
-#include "esphome/fineoffset/core/helpers.h"
+#pragma once
+#if 0
 
-namespace benschumacher {
-namespace fineoffset {
+volatile byte have_data_string = 0;
+volatile int have_data_sensor = 0;
+volatile int temp;
+volatile int hum;
+volatile unsigned int cycles = 0;
+volatile int str_Sensor_ID;
+volatile int str_humidity;
+volatile int str_temperature;
+volatile unsigned int str_cycles = 0;
+volatile bool str_wh2_valid;
 
-static const char *const TAG = "gpio.fineoffset";
-
-static void ICACHE_RAM_ATTR FineoffsetRadio::gpio_intr(FineOffsetRadio *arg) {
+static void ICACHE_RAM_ATTR ext_int_1() {
     static unsigned long edgeTimeStamp[3] = { 0, }; // Timestamp of edges
     static bool skip = true;
 
@@ -192,9 +197,168 @@ static void ICACHE_RAM_ATTR FineoffsetRadio::gpio_intr(FineOffsetRadio *arg) {
 
 }
 
-void FineOffsetRadio::setup() {
-  ESP_LOGCONIFG(TAG, "Setting up FineOffset Radio...");
-  this->t_pin_->setup();
-  this->t_pin_->pin_mode(gpio::FLAG_INPUT);
-  this->t_pin_->attach_interrupt(&FineOffsetRadio::gpio_intr, this, gpio::INTERRUPT_ANY_EDGE);
-}
+class WH2Sensor : public PollingComponent {
+public:
+    Sensor *sensor1 = new Sensor();
+    Sensor *sensor2 = new Sensor();
+    Sensor *sensor3 = new Sensor();
+
+    WH2Sensor() : PollingComponent(1000) {
+        ESP_LOGD("custom", "WH2Sensor::WH2Sensor()");
+    }
+
+    float get_setup_priority() const override {
+        return esphome::setup_priority::DATA;
+    }
+
+    void setup() override {
+        //For ESP8266,if you are using rx pin for reciever set to 3 below
+        //For Sonoff Bridge with direct HW patch use pin 4
+        ESP_LOGD("custom", "WH2Sensor.setup()");
+        //Serial.end();
+        attachInterrupt(33, ext_int_1, CHANGE);
+    }
+ext_int_1
+    void update() override {
+        // This is the actual sensor reading logic.
+        extern volatile int have_data_sensor;
+        extern volatile int temp;
+        extern volatile int hum;
+        extern volatile unsigned int cycles;
+
+        if (have_data_sensor != 0) {
+            ESP_LOGD("custom", "have_data_sensor: %d, temp: %d, hum: %d, cycles: %u",
+                        have_data_sensor, temp, hum, cycles);
+        }
+        if (have_data_sensor == 77 || have_data_sensor == 1122) {
+            sensor1->publish_state(temp * 0.1f);
+            sensor2->publish_state(float(hum));
+            sensor3->publish_state(cycles);
+            have_data_sensor = 0;
+        } else if (have_data_sensor) {
+            have_data_sensor = 0;
+        }
+    }
+protected:
+    ISRInternalGPIOPin pin_;
+};
+
+class WH2LastSensorData : public PollingComponent, public TextSensor {
+public:
+
+    // constructor
+    WH2LastSensorData() : PollingComponent(1000) {
+        ESP_LOGD("custom", "WH2LastSensorData()");
+        sensor_data_.reserve(100);
+    }
+
+    float get_setup_priority() const override {
+        return esphome::setup_priority::DATA;
+    }
+
+    void setup() override {
+        // This will be called by App.setup()
+        ESP_LOGD("custom", "WH2LastSensorData.setup()");
+    }
+
+    void update() override {
+        extern volatile byte have_data_string;
+        extern volatile int str_Sensor_ID;
+        extern volatile int str_humidity;
+        extern volatile int str_temperature;
+        extern volatile unsigned int str_cycles;
+        extern volatile bool str_wh2_valid;
+
+        // This will be called every "update_interval" milliseconds.
+        if (have_data_string == 1) {
+            if (str_wh2_valid) {
+                char temperture_buf[7] = {0, }; // 7 bytes is enough for -100.0 with a '\0'
+
+                snprintf(temperture_buf, sizeof(temperture_buf), "%.1f", (str_temperature * 0.1f));
+                sensor_data_.clear();
+                sensor_data_ += "| Sensor ID:  ";
+                sensor_data_ += to_string(str_Sensor_ID);
+                sensor_data_ += " | humidity: ";
+                sensor_data_ += to_string(str_humidity);
+                sensor_data_ += "% | temperature: ";
+                sensor_data_ += to_string(temperture_buf);
+                sensor_data_ += "°C | ";
+                sensor_data_ += to_string(str_wh2_valid ? "OK " : "BAD");
+                // "cycles: ";
+                // my_data += to_string(str_cycles);
+                // my_data += "| ";
+
+                // Publish state
+                publish_state(sensor_data_);
+                have_data_string = 0;
+            }
+            else if (!str_wh2_valid) {
+                ESP_LOGD("custom", "BAD skipped");
+            }
+        }
+    }
+
+protected:
+    std::string sensor_data_;
+};
+
+class WH2BadSensorData : public PollingComponent, public TextSensor {
+public:
+
+    // constructor
+    WH2BadSensorData() : PollingComponent(1000) {
+        ESP_LOGD("custom", "WH2BadSensorData()");
+        sensor_data_.reserve(100);
+    }
+
+    float get_setup_priority() const override {
+        return esphome::setup_priority::DATA;
+    }
+
+    void setup() override {
+        // This will be called by App.setup()
+        ESP_LOGD("custom", "WH2BadSensorData.setup()");
+    }
+
+    // This will be called every "update_interval" milliseconds.
+    void update() override {
+        extern volatile byte have_data_string;
+        extern volatile int str_Sensor_ID;
+        extern volatile int str_humidity;
+        extern volatile int str_temperature;
+        extern volatile unsigned int str_cycles;
+        extern volatile bool str_wh2_valid;
+
+        if (have_data_string == 1) {
+            if (!str_wh2_valid) {
+                char temperture_buf[7] = {0, }; // 7 bytes is enough for -100.0 with a '\0'
+
+                snprintf(temperture_buf, sizeof(temperture_buf), "%.1f", (str_temperature * 0.1f));
+                sensor_data_.clear();
+                sensor_data_ += "| Sensor ID:  ";
+                sensor_data_ += to_string(str_Sensor_ID);
+                sensor_data_ += " | humidity: ";
+                sensor_data_ += to_string(str_humidity);
+                sensor_data_ += "% | temperature: ";
+                sensor_data_ += to_string(temperture_buf);
+                sensor_data_ += "°C | ";
+                sensor_data_ += to_string(str_wh2_valid ? "OK " : "BAD");
+                // "cycles: ";
+                // my_data += to_string(str_cycles);
+                // my_data += "| ";
+
+                // Publish state
+                publish_state(sensor_data_);
+                have_data_string = 0;
+            }
+            else if (str_wh2_valid) {
+                ESP_LOGD("custom", "OK skipped");
+            }
+        }
+    }
+
+protected:
+    std::string sensor_data_;
+};
+
+#endif
