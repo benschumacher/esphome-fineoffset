@@ -1,3 +1,5 @@
+"""Adds text sensors for FineOffset Hub which are mostly used for diagnostic purposes."""
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import text_sensor
@@ -7,7 +9,9 @@ from .. import fineoffset_ns, FINEOFFSET_CLIENT_SCHEMA, CONF_FINEOFFSET_ID
 
 DEPENDENCIES = ["fineoffset"]
 
-FineOffsetTextSensor = fineoffset_ns.class_("FineOffsetTextSensor", text_sensor.TextSensor, cg.Component)
+FineOffsetTextSensor = fineoffset_ns.class_(
+    "FineOffsetTextSensor", text_sensor.TextSensor, cg.Component
+)
 FineOffsetTextSensorTypes = fineoffset_ns.enum("FineOffsetTextSensorTypes")
 
 CONF_TYPE = "type"
@@ -20,16 +24,19 @@ CONFIG_SCHEMA = (
     text_sensor.text_sensor_schema(
         FineOffsetTextSensor,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
-        icon="mdi:information-outline"
-    ).extend(
+        icon="mdi:information-outline",
+    )
+    .extend(
         {
-            cv.Required(CONF_TYPE): cv.enum(TYPES, lower=True),            
+            cv.Required(CONF_TYPE): cv.enum(TYPES, lower=True),
         }
     )
     .extend(FINEOFFSET_CLIENT_SCHEMA)
 )
 
+
 async def to_code(config):
+    """Convert configuration to code."""
     var = cg.new_Pvariable(config[CONF_ID])
     await text_sensor.register_text_sensor(var, config)
     await cg.register_component(var, config)

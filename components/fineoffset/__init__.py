@@ -1,21 +1,4 @@
-# import esphome.codegen as cg
-# import esphome.config_validation as cv
-# from esphome.const import CONF_ID
-
-# empty_component_ns = cg.esphome_ns.namespace("empty_component")
-# EmptyComponent = empty_component_ns.class_("EmptyComponent", cg.Component)
-
-# CONFIG_SCHEMA = cv.Schema(
-#     {
-#         cv.GenerateID(): cv.declare_id(EmptyComponent),
-#     }
-# ).extend(cv.COMPONENT_SCHEMA)
-
-
-# async def to_code(config):
-#     var = cg.new_Pvariable(config[CONF_ID])
-#     await cg.register_component(var, config)
-
+"""Component Hub for FineOffset WH2 weather sensors."""
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
@@ -28,7 +11,7 @@ AUTO_LOAD = ["sensor"]
 
 CONF_FINEOFFSET_ID = "fineoffset_id"
 
-fineoffset_ns = cg.esphome_ns.namespace('fineoffset')
+fineoffset_ns = cg.esphome_ns.namespace("fineoffset")
 FineOffset = fineoffset_ns.class_("FineOffsetComponent", cg.Component)
 
 CONFIG_SCHEMA = cv.Schema(
@@ -40,12 +23,12 @@ CONFIG_SCHEMA = cv.Schema(
 ).extend(cv.COMPONENT_SCHEMA)
 
 FINEOFFSET_CLIENT_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(CONF_FINEOFFSET_ID): cv.use_id(FineOffset)
-    }
+    {cv.GenerateID(CONF_FINEOFFSET_ID): cv.use_id(FineOffset)}
 )
 
+
 async def to_code(config):
+    """Convert configuration to code."""
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
