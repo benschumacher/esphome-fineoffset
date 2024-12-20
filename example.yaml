@@ -1,6 +1,6 @@
-
+---
 esphome:
-  name: fineoffset_example
+  name: fineoffset-example
   friendly_name: FineOffset Example
 
 esp32:
@@ -25,7 +25,7 @@ sensor:
       name: Temperature
     humidity:
       name: Humidity
-  
+
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
     name: Mudroom
@@ -39,9 +39,7 @@ text_sensor:
   - platform: fineoffset
     name: Last Sensor Data
     type: last
-  
+
   - platform: fineoffset
     name: Bad Sensor Data (CRC failed)
     type: last_bad
-    
-
