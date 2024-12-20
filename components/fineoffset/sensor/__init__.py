@@ -9,10 +9,9 @@ DEPENDENCIES = ["fineoffset"]
 
 FineOffsetSensor = fineoffset_ns.class_("FineOffsetSensor", sensor.Sensor, cg.Component)
 
-CONF_SERIAL_NO = "serial_no"
+CONF_SERIAL_NO = "sensor_no"
 CONF_TEMPERATURE = "temperature"
 CONF_HUMIDITY = "humidity"
-CONF_BATTERY = "battery"
 
 CONFIG_SCHEMA = (
     sensor.sensor_schema(FineOffsetSensor).extend(
@@ -23,9 +22,6 @@ CONFIG_SCHEMA = (
             ),            
             cv.Optional(CONF_HUMIDITY): sensor.sensor_schema(
                 unit_of_measurement=UNIT_PERCENT, icon=ICON_WATER_PERCENT, accuracy_decimals=1,
-            ),            
-            cv.Optional(CONF_BATTERY): sensor.sensor_schema(
-                unit_of_measurement=UNIT_PERCENT, icon=ICON_BATTERY, accuracy_decimals=1,
             ),            
         }
     )
@@ -39,4 +35,5 @@ async def to_code(config):
 
     paren = await cg.get_variable(config[CONF_FINEOFFSET_ID])
     sensor_no = config[CONF_SERIAL_NO];
+    cg.add(var.set_sensor_no(sensor_no))
     cg.add(paren.register_sensor(sensor_no, var))

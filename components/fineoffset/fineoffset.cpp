@@ -1,8 +1,10 @@
 #include "fineoffset.h"
+#include "sensor/fineoffset_sensor.h"
+#include "text_sensor/fineoffset_text_sensor.h"
 
 #include "esphome/core/hal.h"
-#include "esphome/core/log.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/log.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,7 +12,7 @@
 namespace esphome {
 namespace fineoffset {
 
-static const char *const TAG = "fineoffset";
+static const char* const TAG = "fineoffset";
 
 FineOffsetState::FineOffsetState(byte packet[5]) {
     sensor_id = ((packet[0] & 0x0F) << 4) + ((packet[1] & 0xF0) >> 4);
@@ -28,7 +30,9 @@ FineOffsetState::FineOffsetState(byte packet[5]) {
 const char* FineOffsetState::c_str() const {
     std::string data;
 
-    char temperture_buf[7] = {0, }; // 7 bytes is enough for -100.0 with a '\0'
+    char temperture_buf[7] = {
+        0,
+    };  // 7 bytes is enough for -100.0 with a '\0'
     snprintf(temperture_buf, sizeof(temperture_buf), "%.1f", (temperature * 0.1f));
     data.clear();
     data += "| Sensor ID:  ";
@@ -43,13 +47,15 @@ const char* FineOffsetState::c_str() const {
     return data.c_str();
 }
 
-#define COUNTER_RATE 3200-1 // 16,000,000Hz / 3200 = 5000 interrupts per second, ie. 200us between interrupts
+#define COUNTER_RATE \
+    3200 - 1  // 16,000,000Hz / 3200 = 5000 interrupts per second, ie. 200us
+              // between interrupts
 // 1 is indicated by 500uS pulse
 // wh2_accept from 2 = 400us to 3 = 600us
-#define IS_HI_PULSE(interval)   (interval >= 2 && interval <= 3)
+#define IS_HI_PULSE(interval) (interval >= 2 && interval <= 3)
 // 0 is indicated by ~1500us pulse
 // wh2_accept from 7 = 1400us to 8 = 1600us
-#define IS_LOW_PULSE(interval)  (interval >= 7 && interval <= 8)
+#define IS_LOW_PULSE(interval) (interval >= 7 && interval <= 8)
 // worst case packet length
 // 6 bytes x 8 bits x (1.5 + 1) = 120ms; 120ms = 200us x 600
 #define HAS_TIMED_OUT(interval) (interval > 600)
@@ -69,56 +75,64 @@ const char* FineOffsetState::c_str() const {
 
 // wh2_flags
 #define GOT_PULSE 0x01
-#define LOGIC_HI  0x02
+#define LOGIC_HI 0x02
 
 FineOffsetStore::FineOffsetStore()
-    : sampling_state_{0}, sample_count_{0}, was_low_(false), wh2_flags_{0},
-      wh2_packet_state_{0}, wh2_timeout_{0},  wh2_packet_{0},
-      wh2_calculated_crc_{0}, cycles_(0), packet_no_{0}, bit_no_{0}, history_{0}
-{ }
+    : sampling_state_{0},
+      sample_count_{0},
+      was_low_(false),
+      wh2_flags_{0},
+      wh2_packet_state_{0},
+      wh2_timeout_{0},
+      wh2_packet_{0},
+      wh2_calculated_crc_{0},
+      cycles_(0),
+      packet_no_{0},
+      bit_no_{0},
+      history_{0} {}
 
-void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore *self) {
+void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     switch (self->sampling_state_) {
-    case 0: // waiting
-        self->wh2_packet_state_ = 0;
-        if (RF_HI(self->pin_)) {
-            if (self->was_low_) {
-                self->sampling_state_ = 1;
-                self->sample_count_ = 0;
-                self->was_low_ = false;
-            }
-        } else {
-            self->was_low_ = true;
-        }
-        break;
-    case 1: // acquiring first pulse
-        self->sample_count_++;
-        // end of first pulse
-        if (RF_LOW(self->pin_)) {
-            if (IS_HI_PULSE(self->sample_count_)) {
-                self->wh2_flags_ = GOT_PULSE | LOGIC_HI;
-                self->sampling_state_ = 2;
-                self->sample_count_ = 0;        
-            } else if (IS_LOW_PULSE(self->sample_count_)) {
-                self->wh2_flags_ = GOT_PULSE; // logic low
-                self->sampling_state_ = 2;
-                self->sample_count_ = 0;
+        case 0:  // waiting
+            self->wh2_packet_state_ = 0;
+            if (RF_HI(self->pin_)) {
+                if (self->was_low_) {
+                    self->sampling_state_ = 1;
+                    self->sample_count_ = 0;
+                    self->was_low_ = false;
+                }
             } else {
-                self->sampling_state_ = 0;
-            }    
-        }   
-        break;
-    case 2: // observe 1ms of idle time
-        self->sample_count_++;
-        if (RF_HI(self->pin_)) {
-            if (IDLE_HAS_TIMED_OUT(self->sample_count_)) {
-                self->sampling_state_ = 0;
-            } else if (IDLE_PERIOD_DONE(self->sample_count_)) {
-                self->sampling_state_ = 1;
-                self->sample_count_ = 0;
+                self->was_low_ = true;
             }
-        }     
-        break;        
+            break;
+        case 1:  // acquiring first pulse
+            self->sample_count_++;
+            // end of first pulse
+            if (RF_LOW(self->pin_)) {
+                if (IS_HI_PULSE(self->sample_count_)) {
+                    self->wh2_flags_ = GOT_PULSE | LOGIC_HI;
+                    self->sampling_state_ = 2;
+                    self->sample_count_ = 0;
+                } else if (IS_LOW_PULSE(self->sample_count_)) {
+                    self->wh2_flags_ = GOT_PULSE;  // logic low
+                    self->sampling_state_ = 2;
+                    self->sample_count_ = 0;
+                } else {
+                    self->sampling_state_ = 0;
+                }
+            }
+            break;
+        case 2:  // observe 1ms of idle time
+            self->sample_count_++;
+            if (RF_HI(self->pin_)) {
+                if (IDLE_HAS_TIMED_OUT(self->sample_count_)) {
+                    self->sampling_state_ = 0;
+                } else if (IDLE_PERIOD_DONE(self->sample_count_)) {
+                    self->sampling_state_ = 1;
+                    self->sample_count_ = 0;
+                }
+            }
+            break;
     }
 
     if (self->wh2_timeout_ > 0) {
@@ -138,8 +152,8 @@ bool FineOffsetStore::accept() {
         wh2_packet_state_ = 1;
         // enable wh2_timeout
         wh2_timeout_ = 1;
-    } // fall thru to wh2_packet_state one
-    
+    }  // fall thru to wh2_packet_state one
+
     // acquire preamble
     if (wh2_packet_state_ == 1) {
         // shift history right and store new value
@@ -188,7 +202,7 @@ bool FineOffsetStore::accept() {
                 states_.pop_front();
             }
             states_.push_back(state);
-            
+
             if (state.valid) {
                 state_by_sensor_id_.insert({state.sensor_id, state});
             }
@@ -205,6 +219,16 @@ void FineOffsetComponent::dump_config() {
     ESP_LOGCONFIG(TAG, "Setting up FineOFfset...");
     LOG_PIN("  Input Pin: ", this->pin_);
     LOG_UPDATE_INTERVAL(this);
+
+    for (auto& it : this->sensors_) {
+        LOG_SENSOR("  ", "Sensor", it.second);
+        // ESP_LOGCONFIG("  ", "Sensor '%d':", it.first);
+        // it.second->dump_config();
+    }
+
+    for (auto* sensor : this->text_sensors_) {
+        LOG_TEXT_SENSOR("  ", "Text sensor", sensor);
+    }
 }
 
 void FineOffsetComponent::loop() {
@@ -220,8 +244,32 @@ void FineOffsetComponent::loop() {
 }
 
 void FineOffsetComponent::update() {
-    
+    for (auto& it : this->sensors_) {
+        auto [found, state] = store_->get_state_for_sensor_no(it.first);
+        if (found) {
+            it.second->publish_state(state);
+        }
+    }
+
+    for (auto* sensor : this->text_sensors_) {
+        auto [found, state] = store_->get_last_state(sensor->get_sensor_type());
+        
+        if (found) {
+            sensor->publish_state(state.c_str());
+        }
+    }
 }
 
-} // namespace fineoffset
-} // namespace esphome
+void FineOffsetComponent::register_sensor(uint8_t sensor_no, FineOffsetSensor* obj) {
+    obj->set_sensor_no(sensor_no);
+    obj->set_parent(this);
+    this->sensors_.insert({sensor_no, obj});
+}
+
+void FineOffsetComponent::register_text_sensor(FineOffsetTextSensor* obj) {
+    obj->set_parent(this);
+    this->text_sensors_.push_back(obj);
+}
+
+}  // namespace fineoffset
+}  // namespace esphome

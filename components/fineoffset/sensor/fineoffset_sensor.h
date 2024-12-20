@@ -7,13 +7,18 @@
 namespace esphome {
 namespace fineoffset {
 
-    class FineOffsetSensor : public sensor::Sensor, public Component {
-    public:
-        void dump_config() override;
-        void setup() override;
+class FineOffsetSensor : public sensor::Sensor, public Component, public FineOffsetChild {
+   public:
+    void dump_config() override;
+    void setup() override;
 
-    protected:
-    };
+    uint8_t get_sensor_no() const { return this->sensor_no_; }
+    void set_sensor_no(uint8_t sensor_no) { this->sensor_no_ = sensor_no; }
 
-} // namespace fineoffset
-} // namespace esphome
+   protected:
+    friend FineOffsetComponent;
+    uint8_t sensor_no_;
+};
+
+}  // namespace fineoffset
+}  // namespace esphome

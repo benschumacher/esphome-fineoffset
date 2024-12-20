@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import text_sensor
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, ENTITY_CATEGORY_DIAGNOSTIC
 
 from .. import fineoffset_ns, FINEOFFSET_CLIENT_SCHEMA, CONF_FINEOFFSET_ID
 
@@ -17,7 +17,11 @@ TYPES = {
 }
 
 CONFIG_SCHEMA = (
-    text_sensor.text_sensor_schema(FineOffsetTextSensor).extend(
+    text_sensor.text_sensor_schema(
+        FineOffsetTextSensor,
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+        icon="mdi:information-outline"
+    ).extend(
         {
             cv.Required(CONF_TYPE): cv.enum(TYPES, lower=True),            
         }
