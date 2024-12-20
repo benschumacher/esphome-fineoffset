@@ -148,6 +148,7 @@ bool FineOffsetStore::accept() {
     // reset if in initial wh2_packet_state
     if (this->wh2_packet_state_ == 0) {
         // should history be 0, does it matter?
+        this->packet_no_ = 0;
         this->history_ = 0xFF;
         this->wh2_packet_state_ = 1;
         // enable wh2_timeout
@@ -167,7 +168,7 @@ bool FineOffsetStore::accept() {
         if ((this->history_ & 0xB00000111) == 0xB00000110) {
             // need to clear packet, and counters
             this->packet_no_ = 0;
-            // start at 1 becuase only need to acquire 7 bits for first packet byte.
+            // start at 1 because only need to acquire 7 bits for first packet byte.
             this->bit_no_ = 1;
             this->wh2_packet_[0] = this->wh2_packet_[1] = this->wh2_packet_[2] = this->wh2_packet_[3] =
                 this->wh2_packet_[4] = 0;
