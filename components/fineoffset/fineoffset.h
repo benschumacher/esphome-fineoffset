@@ -14,9 +14,9 @@ class InternalGPIOPin;
 namespace fineoffset {
 
 class FineOffsetComponent;
-typedef Parented<FineOffsetComponent> FineOffsetChild;
 
-typedef uint8_t byte;
+using FineOffsetChild = Parented<FineOffsetComponent>;
+using byte = uint8_t;
 
 struct FineOffsetState {
     FineOffsetState() = default;

@@ -253,7 +253,7 @@ void FineOffsetComponent::update() {
 
     for (auto* sensor : this->text_sensors_) {
         auto [found, state] = store_->get_last_state(sensor->get_sensor_type());
-        
+
         if (found) {
             sensor->publish_state(state.c_str());
         }
