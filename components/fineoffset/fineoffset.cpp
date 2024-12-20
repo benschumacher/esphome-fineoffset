@@ -266,8 +266,8 @@ void FineOffsetComponent::update() {
     for (auto it : this->sensors_) {
         auto [found, state] = this->store_.get_state_for_sensor_no(it.first);
         if (found) {
-            it.second->get_temperature_sensor().publish_state(state.temperature * 0.1f);
-            it.second->get_humidity_sensor().publish_state(state.humidity);
+            it.second->publish_temperature(state.temperature * 0.1f);
+            it.second->publish_humidity(state.humidity);
         }
     }
 

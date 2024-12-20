@@ -45,10 +45,18 @@ CONFIG_SCHEMA = (
 async def to_code(config):
     """Convert configuration to code."""
     var = cg.new_Pvariable(config[CONF_ID])
-    await sensor.register_sensor(var, config)
     await cg.register_component(var, config)
 
     paren = await cg.get_variable(config[CONF_FINEOFFSET_ID])
     sensor_no = config[CONF_SERIAL_NO]
-    cg.add(var.set_sensor_no(sensor_no))
     cg.add(paren.register_sensor(sensor_no, var))
+
+    if temperature_sensor_config := config.get(CONF_TEMPERATURE):
+        temperature_sensor = cg.new_Pvariable(temperature_sensor_config[CONF_ID])
+        await sensor.register_sensor(temperature_sensor, temperature_sensor_config)
+        cg.add(var.set_temperature_sensor(temperature_sensor))
+
+    if humidity_sensor_config := config.get(CONF_HUMIDITY):
+        humidity_sensor = cg.new_Pvariable(humidity_sensor_config[CONF_ID])
+        await sensor.register_sensor(humidity_sensor, humidity_sensor_config)
+        cg.add(var.set_humidity_sensor(humidity_sensor))
