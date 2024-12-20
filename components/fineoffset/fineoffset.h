@@ -25,10 +25,10 @@ struct FineOffsetState {
 
     const char* c_str() const;
 
-    uint32_t sensor_id;
-    int32_t temperature;
-    uint32_t humidity;
-    bool valid;
+    uint32_t sensor_id{0};
+    int32_t temperature{0};
+    uint32_t humidity{0};
+    bool valid{false};
 };
 
 class FineOffsetStore {
