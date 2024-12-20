@@ -47,9 +47,8 @@ const char* FineOffsetState::c_str() const {
     return data.c_str();
 }
 
-#define COUNTER_RATE \
-    3200 - 1  // 16,000,000Hz / 3200 = 5000 interrupts per second, ie. 200us
-              // between interrupts
+// 16,000,000Hz / 3200 = 5000 interrupts per second, ie. 200us  between interrupts
+#define COUNTER_RATE 3200 - 1
 // 1 is indicated by 500uS pulse
 // wh2_accept from 2 = 400us to 3 = 600us
 #define IS_HI_PULSE(interval) (interval >= 2 && interval <= 3)
@@ -77,8 +76,9 @@ const char* FineOffsetState::c_str() const {
 #define GOT_PULSE 0x01
 #define LOGIC_HI 0x02
 
-FineOffsetStore::FineOffsetStore()
-    : sampling_state_{0},
+FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent)
+    : parent_(parent),
+      sampling_state_{0},
       sample_count_{0},
       was_low_(false),
       wh2_flags_{0},
@@ -146,65 +146,71 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
 
 bool FineOffsetStore::accept() {
     // reset if in initial wh2_packet_state
-    if (wh2_packet_state_ == 0) {
+    if (this->wh2_packet_state_ == 0) {
         // should history be 0, does it matter?
-        history_ = 0xFF;
-        wh2_packet_state_ = 1;
+        this->history_ = 0xFF;
+        this->wh2_packet_state_ = 1;
         // enable wh2_timeout
-        wh2_timeout_ = 1;
+        this->wh2_timeout_ = 1;
     }  // fall thru to wh2_packet_state one
 
     // acquire preamble
-    if (wh2_packet_state_ == 1) {
+    if (this->wh2_packet_state_ == 1) {
         // shift history right and store new value
-        history_ <<= 1;
+        this->history_ <<= 1;
         // store a 1 if required (right shift along will store a 0)
-        if (wh2_flags_ & LOGIC_HI) {
-            history_ |= 0x01;
+        if (this->wh2_flags_ & LOGIC_HI) {
+            this->history_ |= 0x01;
         }
         // check if we have a valid start of frame
         // xxxxx110
-        if ((history_ & 0xB00000111) == 0xB00000110) {
+        if ((this->history_ & 0xB00000111) == 0xB00000110) {
             // need to clear packet, and counters
-            packet_no_ = 0;
+            this->packet_no_ = 0;
             // start at 1 becuase only need to acquire 7 bits for first packet byte.
-            bit_no_ = 1;
-            wh2_packet_[0] = wh2_packet_[1] = wh2_packet_[2] = wh2_packet_[3] = wh2_packet_[4] = 0;
+            this->bit_no_ = 1;
+            this->wh2_packet_[0] = this->wh2_packet_[1] = this->wh2_packet_[2] = this->wh2_packet_[3] =
+                this->wh2_packet_[4] = 0;
             // we've acquired the preamble
-            wh2_packet_state_ = 2;
+            this->wh2_packet_state_ = 2;
         }
         return false;
     }
 
     // acquire packet
-    if (wh2_packet_state_ == 2) {
-        wh2_packet_[packet_no_] <<= 1;
-        if (wh2_flags_ & LOGIC_HI) {
-            wh2_packet_[packet_no_] |= 0x01;
+    if (this->wh2_packet_state_ == 2) {
+        this->wh2_packet_[packet_no_] <<= 1;
+        if (this->wh2_flags_ & LOGIC_HI) {
+            this->wh2_packet_[this->packet_no_] |= 0x01;
         }
 
-        bit_no_++;
-        if (bit_no_ > 7) {
-            bit_no_ = 0;
-            packet_no_++;
+        this->bit_no_++;
+        if (this->bit_no_ > 7) {
+            this->bit_no_ = 0;
+            this->packet_no_++;
         }
 
-        if (packet_no_ > 4) {
+        if (this->packet_no_ > 4) {
             // start the sampling process from scratch
-            wh2_packet_state_ = 0;
+            this->wh2_packet_state_ = 0;
             // clear wh2_timeout
-            wh2_timeout_ = 0;
+            this->wh2_timeout_ = 0;
 
-            increment_cycles_();
+            this->cycles_++;
             auto state = FineOffsetState(wh2_packet_);
 
-            if (states_.size() == 10) {
-                states_.pop_front();
+            if (this->states_.size() == 10) {
+                this->states_.pop_front();
             }
-            states_.push_back(state);
+            this->states_.push_back(state);
 
             if (state.valid) {
-                state_by_sensor_id_.insert({state.sensor_id, state});
+                this->state_by_sensor_id_.insert({state.sensor_id, state});
+                if (this->parent_->is_unknown(state.sensor_id)) {
+                    this->last_unknown_ = state;
+                }
+            } else {
+                this->last_bad_ = state;
             }
 
             ESP_LOGD(TAG, "%s", state.c_str());
@@ -215,18 +221,31 @@ bool FineOffsetStore::accept() {
     return false;
 }
 
+std::pair<bool, const FineOffsetState&> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
+    switch (sensor_type) {
+        case FINEOFFSET_TYPE_LAST:
+            return {true, this->states_.back()};
+        case FINEOFFSET_TYPE_LAST_BAD:
+            return {true, this->last_bad_};
+        case FINEOFFSET_TYPE_UNKNOWN:
+            return {true, this->last_unknown_};
+        default:
+            return {false, FineOffsetState()};
+    }
+}
+
 void FineOffsetComponent::dump_config() {
     ESP_LOGCONFIG(TAG, "Setting up FineOFfset...");
     LOG_PIN("  Input Pin: ", this->pin_);
     LOG_UPDATE_INTERVAL(this);
 
-    for (auto& it : this->sensors_) {
+    for (auto it : this->sensors_) {
         LOG_SENSOR("  ", "Sensor", it.second);
         // ESP_LOGCONFIG("  ", "Sensor '%d':", it.first);
         // it.second->dump_config();
     }
 
-    for (auto* sensor : this->text_sensors_) {
+    for (auto sensor : this->text_sensors_) {
         LOG_TEXT_SENSOR("  ", "Text sensor", sensor);
     }
 }
@@ -235,8 +254,8 @@ void FineOffsetComponent::loop() {
     const auto now = millis();
     uint32_t spacing;
 
-    if (store_.ready()) {
-        if (store_.accept()) {
+    if (this->store_.ready()) {
+        if (this->store_.accept()) {
             // store_.spacing = store_.now - store_.old;
             // store_.old = store_.now;
         }
@@ -244,18 +263,19 @@ void FineOffsetComponent::loop() {
 }
 
 void FineOffsetComponent::update() {
-    for (auto& it : this->sensors_) {
-        auto [found, state] = store_->get_state_for_sensor_no(it.first);
+    for (auto it : this->sensors_) {
+        auto [found, state] = this->store_.get_state_for_sensor_no(it.first);
         if (found) {
-            it.second->publish_state(state);
+            it.second->get_temperature_sensor().publish_state(state.temperature * 0.1f);
+            it.second->get_humidity_sensor().publish_state(state.humidity);
         }
     }
 
-    for (auto* sensor : this->text_sensors_) {
-        auto [found, state] = store_->get_last_state(sensor->get_sensor_type());
+    for (auto text_sensor : this->text_sensors_) {
+        auto [found, state] = this->store_.get_last_state(text_sensor->get_sensor_type());
 
         if (found) {
-            sensor->publish_state(state.c_str());
+            text_sensor->publish_state(state.c_str());
         }
     }
 }

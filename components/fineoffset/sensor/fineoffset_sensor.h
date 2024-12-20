@@ -14,10 +14,16 @@ class FineOffsetSensor : public sensor::Sensor, public Component, public FineOff
 
     uint8_t get_sensor_no() const { return this->sensor_no_; }
     void set_sensor_no(uint8_t sensor_no) { this->sensor_no_ = sensor_no; }
+    sensor::Sensor& get_temperature_sensor() { return temperature_sensor_; }
+    sensor::Sensor& get_humidity_sensor() { return humidity_sensor_; }
 
    protected:
     friend FineOffsetComponent;
+
     uint8_t sensor_no_;
+
+    sensor::Sensor temperature_sensor_;
+    sensor::Sensor humidity_sensor_;
 };
 
 }  // namespace fineoffset

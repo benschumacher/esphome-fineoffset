@@ -14,6 +14,7 @@ class InternalGPIOPin;
 namespace fineoffset {
 
 class FineOffsetComponent;
+enum FineOffsetTextSensorType : uint8_t;
 
 using FineOffsetChild = Parented<FineOffsetComponent>;
 using byte = uint8_t;
@@ -32,7 +33,8 @@ struct FineOffsetState {
 
 class FineOffsetStore {
    public:
-    FineOffsetStore();
+    FineOffsetStore(FineOffsetComponent* parent);
+
     void setup(InternalGPIOPin* pin) {
         pin->setup();
         this->pin_ = pin->to_isr();
@@ -41,11 +43,22 @@ class FineOffsetStore {
     bool accept();
     bool ready() { return wh2_flags_ != 0; }
 
+    std::pair<bool, const FineOffsetState&> get_state_for_sensor_no(uint32_t sensor_id) const {
+        auto it = state_by_sensor_id_.find(sensor_id);
+        if (it == state_by_sensor_id_.end()) {
+            return {false, FineOffsetState()};
+        }
+        return {true, it->second};
+    }
+    std::pair<bool, const FineOffsetState&> get_last_state(FineOffsetTextSensorType) const;
+
     static void intr_cb(FineOffsetStore* arg);
 
    protected:
-    uint32_t increment_cycles_() { return ++cycles_; }
+    FineOffsetStore() = delete;
+    FineOffsetStore(const FineOffsetStore&) = delete;
 
+    FineOffsetComponent* parent_;
     ISRInternalGPIOPin pin_;
 
     // volatile uint32_t edge_timestamps_[3];
@@ -68,6 +81,9 @@ class FineOffsetStore {
 
     std::deque<FineOffsetState> states_;
     std::map<uint32_t, FineOffsetState> state_by_sensor_id_;
+
+    FineOffsetState last_bad_;
+    FineOffsetState last_unknown_;
 };
 
 class FineOffsetSensor;
@@ -75,6 +91,8 @@ class FineOffsetTextSensor;
 
 class FineOffsetComponent : public PollingComponent {
    public:
+    FineOffsetComponent() : store_(this) {}
+
     void set_pin(InternalGPIOPin* pin) { pin_ = pin; }
     void setup() override { this->store_.setup(this->pin_); }
     void loop() override;
@@ -83,6 +101,7 @@ class FineOffsetComponent : public PollingComponent {
 
     void register_sensor(uint8_t sensor_no, FineOffsetSensor* obj);
     void register_text_sensor(FineOffsetTextSensor* obj);
+    bool is_unknown(uint8_t sensor_no) const { return this->sensors_.find(sensor_no) == this->sensors_.end(); }
 
    protected:
     FineOffsetStore store_;
