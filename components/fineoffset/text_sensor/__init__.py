@@ -18,6 +18,7 @@ CONF_TYPE = "type"
 TYPES = {
     "last": FineOffsetTextSensorTypes.FINEOFFSET_TYPE_LAST,
     "last_bad": FineOffsetTextSensorTypes.FINEOFFSET_TYPE_LAST_BAD,
+    "unknown": FineOffsetTextSensorTypes.FINEOFFSET_TYPE_UNKNOWN,
 }
 
 CONFIG_SCHEMA = (

@@ -6,10 +6,11 @@
 
 namespace esphome {
 namespace fineoffset {
-    
+
 enum FineOffsetTextSensorType {
     FINEOFFSET_TYPE_LAST,
     FINEOFFSET_TYPE_LAST_BAD,
+    FINEOFFSET_TYPE_UNKNOWN,
 };
 
 class FineOffsetTextSensor : public text_sensor::TextSensor, public Component, public FineOffsetChild {
