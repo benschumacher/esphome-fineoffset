@@ -58,6 +58,8 @@ class FineOffsetStore {
     static void intr_cb(FineOffsetStore* arg);
 
    protected:
+    friend class FineOffsetComponent;
+
     FineOffsetStore() = delete;
     FineOffsetStore(const FineOffsetStore&) = delete;
 
@@ -65,9 +67,13 @@ class FineOffsetStore {
     ISRInternalGPIOPin pin_;
 
     // volatile uint32_t edge_timestamps_[3];
-    // volatile bool skip_;
-    byte sampling_state_;
-    byte sample_count_;
+    volatile bool skip_;
+    volatile uint8_t sampling_state_;
+    volatile uint8_t sample_count_;
+    volatile uint64_t last_interval_;
+    volatile uint64_t edge_millis_0 = 0;
+    volatile uint64_t edge_millis_1 = 0;
+    volatile uint64_t edge_millis_2 = 0;
     bool was_low_;
 
     volatile byte wh2_flags_;
@@ -75,7 +81,6 @@ class FineOffsetStore {
     volatile int wh2_timeout_;
 
     byte wh2_packet_[5];
-    byte wh2_calculated_crc_;
     uint32_t cycles_;
     uint32_t bad_count_;
 
