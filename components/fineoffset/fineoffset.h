@@ -36,12 +36,15 @@ class FineOffsetStore {
     FineOffsetStore(FineOffsetComponent* parent);
 
     void setup(InternalGPIOPin* pin) {
+        pin->pin_mode(gpio::FLAG_INPUT);
         pin->setup();
-        this->pin_ = pin->to_isr();
         pin->attach_interrupt(&FineOffsetStore::intr_cb, this, gpio::INTERRUPT_ANY_EDGE);
+        this->pin_ = pin->to_isr();
     }
     bool accept();
     bool ready() { return wh2_flags_ != 0; }
+    bool state_valid();
+    void record_state();
 
     std::pair<bool, const FineOffsetState&> get_state_for_sensor_no(uint32_t sensor_id) const {
         auto it = state_by_sensor_id_.find(sensor_id);

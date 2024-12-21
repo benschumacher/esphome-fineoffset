@@ -148,7 +148,6 @@ bool FineOffsetStore::accept() {
     // reset if in initial wh2_packet_state
     if (this->wh2_packet_state_ == 0) {
         // should history be 0, does it matter?
-        this->packet_no_ = 0;
         this->history_ = 0xFF;
         this->wh2_packet_state_ = 1;
         // enable wh2_timeout
@@ -197,29 +196,35 @@ bool FineOffsetStore::accept() {
             // clear wh2_timeout
             this->wh2_timeout_ = 0;
 
-            this->cycles_++;
-            auto state = FineOffsetState(wh2_packet_);
-
-            if (this->states_.size() == 10) {
-                this->states_.pop_front();
-            }
-            this->states_.push_back(state);
-
-            if (state.valid) {
-                this->state_by_sensor_id_.insert({state.sensor_id, state});
-                if (this->parent_->is_unknown(state.sensor_id)) {
-                    this->last_unknown_ = state;
-                }
-            } else {
-                this->last_bad_ = state;
-            }
-
-            ESP_LOGD(TAG, "%s", state.c_str());
-
             return true;
         }
     }
     return false;
+}
+
+bool FineOffsetStore::state_valid() { return (crc8(this->wh2_packet_, 4) == this->wh2_packet_[4]); }
+
+void FineOffsetStore::record_state() {
+    this->cycles_++;
+    auto state = FineOffsetState(wh2_packet_);
+
+    if (this->states_.size() == 10) {
+        this->states_.pop_front();
+    }
+    this->states_.push_back(state);
+
+    if (state.valid) {
+        this->state_by_sensor_id_.insert({state.sensor_id, state});
+        if (this->parent_->is_unknown(state.sensor_id)) {
+            this->last_unknown_ = state;
+        }
+    } else {
+        this->last_bad_ = state;
+    }
+
+    ESP_LOGD(TAG, "%s", state.c_str());
+
+    this->wh2_flags_ = 0;
 }
 
 std::pair<bool, const FineOffsetState&> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
@@ -257,8 +262,11 @@ void FineOffsetComponent::loop() {
 
     if (this->store_.ready()) {
         if (this->store_.accept()) {
-            // store_.spacing = store_.now - store_.old;
-            // store_.old = store_.now;
+            if (!this->store_.state_valid()) {
+                return;
+            } else {
+                this->store_.record_state();
+            }
         }
     }
 }
