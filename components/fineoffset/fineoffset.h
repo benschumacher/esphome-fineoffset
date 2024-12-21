@@ -1,5 +1,8 @@
 #pragma once
 
+#include <esp_types.h>
+
+#include <atomic>
 #include <map>
 #include <vector>
 
@@ -16,14 +19,14 @@ namespace fineoffset {
 class FineOffsetComponent;
 enum FineOffsetTextSensorType : uint8_t;
 
-using FineOffsetChild = Parented<FineOffsetComponent>;
 using byte = uint8_t;
+using FineOffsetChild = Parented<FineOffsetComponent>;
 
 struct FineOffsetState {
     FineOffsetState() = default;
     FineOffsetState(byte packet[5]);
 
-    const char* c_str() const;
+    std::string str() const;
 
     uint32_t sensor_id{0};
     int32_t temperature{0};
@@ -42,8 +45,8 @@ class FineOffsetStore {
         this->pin_ = pin->to_isr();
     }
     bool accept();
-    bool ready() { return wh2_flags_ != 0; }
-    bool state_valid();
+    bool ready() { return this->have_sensor_data_.load() != 0; }
+    // bool state_valid();
     void record_state();
 
     std::pair<bool, const FineOffsetState&> get_state_for_sensor_no(uint32_t sensor_id) const {
@@ -66,27 +69,14 @@ class FineOffsetStore {
     FineOffsetComponent* parent_;
     ISRInternalGPIOPin pin_;
 
-    // volatile uint32_t edge_timestamps_[3];
-    volatile bool skip_;
-    volatile uint8_t sampling_state_;
-    volatile uint8_t sample_count_;
-    volatile uint64_t last_interval_;
-    volatile uint64_t edge_millis_0 = 0;
-    volatile uint64_t edge_millis_1 = 0;
-    volatile uint64_t edge_millis_2 = 0;
-    bool was_low_;
+    std::atomic<byte> wh2_flags_{0};
+    std::atomic<bool> accept_flag_{false};
+    volatile std::atomic<std::uint8_t> have_sensor_data_{0};
+    volatile uint32_t cycles_{0};
+    volatile uint32_t bad_count_{0};
+    std::atomic<byte> packet_state_;
 
-    volatile byte wh2_flags_;
-    volatile byte wh2_packet_state_;
-    volatile int wh2_timeout_;
-
-    byte wh2_packet_[5];
-    uint32_t cycles_;
-    uint32_t bad_count_;
-
-    byte packet_no_;
-    byte bit_no_;
-    byte history_;
+    FineOffsetState wh2_state_;
 
     std::deque<FineOffsetState> states_;
     std::map<uint32_t, FineOffsetState> state_by_sensor_id_;
