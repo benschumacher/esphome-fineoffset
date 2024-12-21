@@ -1,6 +1,10 @@
 #include "fineoffset.h"
+#ifdef USE_SENSOR
 #include "sensor/fineoffset_sensor.h"
+#endif
+#ifdef USE_TEXT_SENSOR
 #include "text_sensor/fineoffset_text_sensor.h"
+#endif
 
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
@@ -67,8 +71,8 @@ const char* FineOffsetState::c_str() const {
 // 4 x 200us = 800us
 #define IDLE_PERIOD_DONE(interval) (interval >= 4)
 // Shorthand for tests
-//#define RF_HI (digitalRead(RF_IN) == HIGH)
-//#define RF_LOW (digitalRead(RF_IN) == LOW)
+// #define RF_HI (digitalRead(RF_IN) == HIGH)
+// #define RF_LOW (digitalRead(RF_IN) == LOW)
 #define RF_HI(pin) ((pin).digital_read())
 #define RF_LOW(pin) (!(pin).digital_read())
 
@@ -216,10 +220,10 @@ void FineOffsetStore::record_state() {
     if (state.valid) {
         this->state_by_sensor_id_.insert({state.sensor_id, state});
         if (this->parent_->is_unknown(state.sensor_id)) {
-            this->last_unknown_ = state;
+            this->last_unknown_ = std::unique_ptr<FineOffsetState>(new FineOffsetState(state));
         }
     } else {
-        this->last_bad_ = state;
+        this->last_bad_ = std::unique_ptr<FineOffsetState>(new FineOffsetState(state));
     }
 
     ESP_LOGD(TAG, "%s", state.c_str());
@@ -230,14 +234,23 @@ void FineOffsetStore::record_state() {
 std::pair<bool, const FineOffsetState&> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
     switch (sensor_type) {
         case FINEOFFSET_TYPE_LAST:
-            return {true, this->states_.back()};
+            if (!this->states_.empty()) {
+                return {true, this->states_.back()};
+            }
+            break;
         case FINEOFFSET_TYPE_LAST_BAD:
-            return {true, this->last_bad_};
+            if (this->last_bad_ != nullptr) {
+                return {true, *this->last_bad_};
+            }
+            break;
         case FINEOFFSET_TYPE_UNKNOWN:
-            return {true, this->last_unknown_};
-        default:
-            return {false, FineOffsetState()};
+            if (this->last_unknown_ != nullptr) {
+                return {true, *this->last_unknown_};
+            }
+            break;
     }
+
+    return {false, FineOffsetState()};
 }
 
 void FineOffsetComponent::dump_config() {

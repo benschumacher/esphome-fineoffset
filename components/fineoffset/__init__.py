@@ -14,13 +14,15 @@ CONF_FINEOFFSET_ID = "fineoffset_id"
 fineoffset_ns = cg.esphome_ns.namespace("fineoffset")
 FineOffset = fineoffset_ns.class_("FineOffsetComponent", cg.Component)
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(FineOffset),
-        cv.Required(CONF_PIN): pins.internal_gpio_input_pin_schema,
-        cv.Optional(CONF_NAME): cv.string,
-    }
-).extend(cv.COMPONENT_SCHEMA)
+CONFIG_SCHEMA = cv.All(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(FineOffset),
+            cv.Required(CONF_PIN): pins.internal_gpio_input_pin_schema,
+            cv.Optional(CONF_NAME): cv.string,
+        }
+    ).extend(cv.polling_component_schema("60s")),
+)
 
 FINEOFFSET_CLIENT_SCHEMA = cv.Schema(
     {cv.GenerateID(CONF_FINEOFFSET_ID): cv.use_id(FineOffset)}

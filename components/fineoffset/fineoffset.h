@@ -85,8 +85,8 @@ class FineOffsetStore {
     std::deque<FineOffsetState> states_;
     std::map<uint32_t, FineOffsetState> state_by_sensor_id_;
 
-    FineOffsetState last_bad_;
-    FineOffsetState last_unknown_;
+    std::unique_ptr<FineOffsetState> last_bad_{nullptr};
+    std::unique_ptr<FineOffsetState> last_unknown_{nullptr};
 };
 
 class FineOffsetSensor;
@@ -97,7 +97,10 @@ class FineOffsetComponent : public PollingComponent {
     FineOffsetComponent() : store_(this) {}
 
     void set_pin(InternalGPIOPin* pin) { pin_ = pin; }
-    void setup() override { this->store_.setup(this->pin_); }
+    void setup() override {
+        PollingComponent::setup();
+        this->store_.setup(this->pin_);
+    }
     void loop() override;
     void dump_config() override;
     void update() override;
