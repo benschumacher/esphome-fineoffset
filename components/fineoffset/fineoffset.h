@@ -77,6 +77,7 @@ class FineOffsetStore {
     byte wh2_packet_[5];
     byte wh2_calculated_crc_;
     uint32_t cycles_;
+    uint32_t bad_count_;
 
     byte packet_no_;
     byte bit_no_;

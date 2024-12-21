@@ -195,10 +195,33 @@ bool FineOffsetStore::accept() {
         }
 
         if (this->packet_no_ > 4) {
+            this->cycles_++;
+
             // start the sampling process from scratch
             this->wh2_packet_state_ = 0;
             // clear wh2_timeout
             this->wh2_timeout_ = 0;
+
+            if (state_valid()) {
+                this->bad_count_++;
+            }
+            ESP_LOGD(TAG, "packet_count=%d bad_count=%d cycles=%d", this->packet_no_, this->bad_count_, this->cycles_);
+            // Serial.print(spacing, DEC);
+            // Serial.print(" | ");
+            // Serial.print(average_interval, DEC);
+            // Serial.print(" | ");
+
+            for (auto i = 0; i < 5; i++) {
+                ESP_LOGD(TAG, "%d: 0x%x / %d", i, this->wh2_packet_[i], this->wh2_packet_[i]);
+            }
+            // Serial.print("| Sensor ID: 0x");
+            // Serial.print(wh2_sensor_id(), HEX);
+            // Serial.print(" | ");
+            // Serial.print(wh2_humidity(), DEC);
+            // Serial.print("% | ");
+            // Serial.print(wh2_temperature(), DEC);
+            // Serial.print(" | ");
+            // Serial.println((wh2_valid() ? "OK" : "BAD"));
 
             return true;
         }
