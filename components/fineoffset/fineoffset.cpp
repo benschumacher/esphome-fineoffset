@@ -28,7 +28,7 @@ FineOffsetState::FineOffsetState(byte packet[5]) {
     }
     // state is valid if the contents of the first 4 bytes
     // equals the crc stored in the 5th
-    valid = crc8(packet, 4) == packet[4];
+    valid = FineOffsetState::crc8ish(packet, 4) == packet[4];
 }
 
 std::string FineOffsetState::str() const {
@@ -50,12 +50,10 @@ std::string FineOffsetState::str() const {
 }
 
 FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent)
-    : parent_(parent), wh2_state_(), wh2_flags_{0}, packet_state_{0} {}
+    : parent_(parent), state_obj_(nullptr), wh2_flags_{0}, packet_state_{0} {}
 
 void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
-    static unsigned long edgeTimeStamp[3] = {
-        0,
-    };  // Timestamp of edges
+    static unsigned long edgeTimeStamp[3] = {0};  // Timestamp of edges
     static bool skip = true;
 
     // Filter out too short pulses. This method works as a low pass filter.  (borroved from new remote reciever)
@@ -100,9 +98,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     static byte wh2_flags = 0x00;
     static bool wh2_accept_flag = false;
     static byte wh2_packet_state = 0;
-    static byte wh2_packet[5] = {
-        0,
-    };
+    static byte wh2_packet[5] = {0};
     static bool wh2_valid = false;
     static byte sampling_state = 0;
     static byte packet_no = 0;
@@ -123,7 +119,6 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
             }
             break;
         case 1:  // observe 1ms of idle time
-
             if (IDLE_HAS_TIMED_OUT(pulse)) {
                 sampling_state = 0;
                 wh2_packet_state = 1;
@@ -184,7 +179,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
         }
 
         if (wh2_accept_flag) {
-            uint8_t crc = crc8(wh2_packet, 4);
+            uint8_t crc = FineOffsetState::crc8ish(wh2_packet, 4);
             self->cycles_++;
 
             if (crc == wh2_packet[4]) {
@@ -194,11 +189,14 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
                 wh2_valid = false;
             }
 
+            std::shared_ptr<FineOffsetState> state(new FineOffsetState(wh2_packet));
+
             // avoid change sensor data during update
             if (wh2_valid == true && self->have_sensor_data_.load() == 0) {
-                FineOffsetState state(wh2_packet);
-                self->wh2_state_ = state;
-                self->have_sensor_data_.store(state.sensor_id);
+                self->state_obj_ = state;
+                self->have_sensor_data_.store(state->sensor_id);
+            } else if (!wh2_valid && self->have_sensor_data_.load() == 0) {
+                self->state_obj_ = state;
             }
 
             wh2_accept_flag = false;
@@ -219,27 +217,27 @@ bool FineOffsetStore::accept() {
 }
 
 void FineOffsetStore::record_state() {
-    FineOffsetState state = this->wh2_state_;
-    this->wh2_state_ = FineOffsetState();
-    this->wh2_flags_.store(0);
+    std::shared_ptr<FineOffsetState> state(this->state_obj_);
+    this->state_obj_.reset();
 
     if (this->states_.size() == 10) {
         this->states_.pop_front();
     }
-    this->states_.push_back(state);
+    this->states_.push_back(*state);
 
-    if (state.valid) {
-        this->state_by_sensor_id_.insert({state.sensor_id, state});
-        if (this->parent_->is_unknown(state.sensor_id)) {
-            this->last_unknown_ = std::unique_ptr<FineOffsetState>(new FineOffsetState(state));
+    if (state->valid) {
+        this->state_by_sensor_id_.insert({state->sensor_id, *state});
+        if (this->parent_->is_unknown(state->sensor_id)) {
+            this->last_unknown_ = state;
         }
     } else {
-        this->last_bad_ = std::unique_ptr<FineOffsetState>(new FineOffsetState(state));
+        this->last_bad_ = state;
     }
 
-    this->have_sensor_data_.store(0);
+    ESP_LOGD(TAG, "%s", state->str().c_str());
 
-    ESP_LOGD(TAG, "%s", state.str().c_str());
+    this->have_sensor_data_.store(0);
+    this->wh2_flags_.store(0);
 }
 
 std::pair<bool, const FineOffsetState&> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {

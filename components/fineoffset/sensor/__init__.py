@@ -4,11 +4,12 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
 from esphome.const import (
+    DEVICE_CLASS_TEMPERATURE,
+    DEVICE_CLASS_HUMIDITY,
+    STATE_CLASS_MEASUREMENT,
     CONF_ID,
     UNIT_CELSIUS,
     UNIT_PERCENT,
-    ICON_THERMOMETER,
-    ICON_WATER_PERCENT,
 )
 
 from .. import fineoffset_ns, FINEOFFSET_CLIENT_SCHEMA, CONF_FINEOFFSET_ID
@@ -28,13 +29,15 @@ CONFIG_SCHEMA = (
             cv.Required(CONF_SERIAL_NO): cv.int_range(0, 255),
             cv.Optional(CONF_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
-                icon=ICON_THERMOMETER,
                 accuracy_decimals=1,
+                device_class=DEVICE_CLASS_TEMPERATURE,
+                state_class=STATE_CLASS_MEASUREMENT,
             ),
             cv.Optional(CONF_HUMIDITY): sensor.sensor_schema(
                 unit_of_measurement=UNIT_PERCENT,
-                icon=ICON_WATER_PERCENT,
-                accuracy_decimals=1,
+                accuracy_decimals=0,
+                device_class=DEVICE_CLASS_HUMIDITY,
+                state_class=STATE_CLASS_MEASUREMENT,
             ),
         }
     )

@@ -32,6 +32,23 @@ struct FineOffsetState {
     int32_t temperature{0};
     uint32_t humidity{0};
     bool valid{false};
+
+    static uint8_t crc8ish(const byte data[], uint8_t len) {
+        uint8_t crc = 0;
+        uint8_t addr = 0;
+        // Indicated changes are from reference CRC-8 function in OneWire library
+        while (len--) {
+            uint8_t inbyte = data[addr++];
+            for (uint8_t i = 8; i; i--) {
+                uint8_t mix = (crc ^ inbyte) & 0x80;  // changed from & 0x01
+                crc <<= 1;                            // changed from right shift
+                if (mix)
+                    crc ^= 0x31;  // changed from 0x8C;
+                inbyte <<= 1;     // changed from right shift
+            }
+        }
+        return crc;
+    }
 };
 
 class FineOffsetStore {
@@ -45,8 +62,7 @@ class FineOffsetStore {
         this->pin_ = pin->to_isr();
     }
     bool accept();
-    bool ready() { return this->have_sensor_data_.load() != 0; }
-    // bool state_valid();
+    bool ready() { return (this->have_sensor_data_.load() != 0 || this->state_obj_ != nullptr); }
     void record_state();
 
     std::pair<bool, const FineOffsetState&> get_state_for_sensor_no(uint32_t sensor_id) const {
@@ -76,13 +92,13 @@ class FineOffsetStore {
     volatile uint32_t bad_count_{0};
     std::atomic<byte> packet_state_;
 
-    FineOffsetState wh2_state_;
+    std::shared_ptr<FineOffsetState> state_obj_{nullptr};
 
     std::deque<FineOffsetState> states_;
     std::map<uint32_t, FineOffsetState> state_by_sensor_id_;
 
-    std::unique_ptr<FineOffsetState> last_bad_{nullptr};
-    std::unique_ptr<FineOffsetState> last_unknown_{nullptr};
+    std::shared_ptr<FineOffsetState> last_bad_{nullptr};
+    std::shared_ptr<FineOffsetState> last_unknown_{nullptr};
 };
 
 class FineOffsetSensor;
