@@ -19,16 +19,18 @@ namespace fineoffset {
 static const char* const TAG = "fineoffset";
 
 FineOffsetState::FineOffsetState(byte packet[5]) {
-    sensor_id = ((packet[0] & 0x0F) << 4) + ((packet[1] & 0xF0) >> 4);
-    temperature = ((packet[1] & 0b00000111) << 8) + packet[2];
-    humidity = packet[3];
+    this->sensor_id = ((packet[0] & 0x0F) << 4) + ((packet[1] & 0xF0) >> 4);
+    this->temperature = ((packet[1] & 0b00000111) << 8) + packet[2];
+    this->humidity = packet[3];
     // make negative
     if (packet[1] & 0b00001000) {
-        temperature = -temperature;
+        this->temperature = -this->temperature;
     }
     // state is valid if the contents of the first 4 bytes
     // equals the crc stored in the 5th
-    valid = FineOffsetState::crc8ish(packet, 4) == packet[4];
+    if (this->sensor_id != 0) {
+        this->valid = FineOffsetState::crc8ish(packet, 4) == packet[4];
+    }
 }
 
 std::string FineOffsetState::str() const {
@@ -48,6 +50,26 @@ std::string FineOffsetState::str() const {
 
     return data;
 }
+
+//--------------------------------------------------------
+// 1 is indicated by 500uS pulse
+// wh2_accept from 2 = 400us to 3 = 600us
+#define IS_HI_PULSE(interval) (interval >= 250 && interval <= 750)
+// 0 is indicated by ~1500us pulse
+// wh2_accept from 7 = 1400us to 8 = 1600us
+#define IS_LOW_PULSE(interval) (interval >= 1200 && interval <= 1750)
+// worst case packet length
+// 6 bytes x 8 bits =48
+#define IDLE_HAS_TIMED_OUT(interval) (interval > 1199)
+// our expected pulse should arrive after 1ms
+// we'll wh2_accept it if it arrives after
+// 4 x 200us = 800us
+#define IDLE_PERIOD_DONE(interval) (interval >= 751)
+
+// const auto GOT_PULSE = 0x01;
+// const auto LOGIC_HI = 0x02;
+#define GOT_PULSE 0x01
+#define LOGIC_HI 0x02
 
 FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent)
     : parent_(parent), state_obj_(nullptr), wh2_flags_{0}, packet_state_{0} {}
@@ -74,26 +96,6 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
 
     unsigned int pulse = edgeTimeStamp[1] - edgeTimeStamp[0];
     edgeTimeStamp[0] = edgeTimeStamp[1];
-
-//--------------------------------------------------------
-// 1 is indicated by 500uS pulse
-// wh2_accept from 2 = 400us to 3 = 600us
-#define IS_HI_PULSE(interval) (interval >= 250 && interval <= 750)
-// 0 is indicated by ~1500us pulse
-// wh2_accept from 7 = 1400us to 8 = 1600us
-#define IS_LOW_PULSE(interval) (interval >= 1200 && interval <= 1750)
-// worst case packet length
-// 6 bytes x 8 bits =48
-#define IDLE_HAS_TIMED_OUT(interval) (interval > 1199)
-// our expected pulse should arrive after 1ms
-// we'll wh2_accept it if it arrives after
-// 4 x 200us = 800us
-#define IDLE_PERIOD_DONE(interval) (interval >= 751)
-
-// const auto GOT_PULSE = 0x01;
-// const auto LOGIC_HI = 0x02;
-#define GOT_PULSE 0x01
-#define LOGIC_HI 0x02
 
     static byte wh2_flags = 0x00;
     static bool wh2_accept_flag = false;
@@ -220,41 +222,49 @@ void FineOffsetStore::record_state() {
     std::shared_ptr<FineOffsetState> state(this->state_obj_);
     this->state_obj_.reset();
 
-    if (this->states_.size() == 10) {
-        this->states_.pop_front();
-    }
-    this->states_.push_back(*state);
-
-    if (state->valid) {
-        this->state_by_sensor_id_.insert({state->sensor_id, *state});
-        if (this->parent_->is_unknown(state->sensor_id)) {
-            this->last_unknown_ = state;
+    if (state->sensor_id != 0) {
+        if (this->states_.size() == 10) {
+            this->states_.pop_front();
         }
-    } else {
-        this->last_bad_ = state;
-    }
+        this->states_.push_back(*state);
 
-    ESP_LOGD(TAG, "%s", state->str().c_str());
+        if (state->valid) {
+            const auto result = this->state_by_sensor_id_.insert({state->sensor_id, *state});
+            if (!result.second) {
+                result.first->second = *state;
+            }
+            if (this->parent_->is_unknown(state->sensor_id)) {
+                this->last_unknown_ = state;
+            }
+        } else {
+            this->last_bad_ = state;
+        }
+
+        ESP_LOGD(TAG, "%s", state->str().c_str());
+    }
 
     this->have_sensor_data_.store(0);
     this->wh2_flags_.store(0);
 }
 
-std::pair<bool, const FineOffsetState&> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
+std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
     switch (sensor_type) {
         case FINEOFFSET_TYPE_LAST:
             if (!this->states_.empty()) {
-                return {true, this->states_.back()};
+                FineOffsetState state = this->states_.back();
+                return {true, state};
             }
             break;
         case FINEOFFSET_TYPE_LAST_BAD:
             if (this->last_bad_ != nullptr) {
-                return {true, *this->last_bad_};
+                auto state = *this->last_bad_;
+                return {true, state};
             }
             break;
         case FINEOFFSET_TYPE_UNKNOWN:
             if (this->last_unknown_ != nullptr) {
-                return {true, *this->last_unknown_};
+                auto state = *this->last_unknown_;
+                return {true, state};
             }
             break;
     }
@@ -280,13 +290,13 @@ void FineOffsetComponent::dump_config() {
 
 void FineOffsetComponent::loop() {
     if (this->store_.ready()) {
-        ESP_LOGD(TAG, "ready");
+        ESP_LOGD(TAG, "ready, core=%d", xPortGetCoreID());
         this->store_.record_state();
     }
 }
 
 void FineOffsetComponent::update() {
-    ESP_LOGD(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
+    ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
              (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
              this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,
              this->store_.bad_count_);
@@ -317,6 +327,8 @@ void FineOffsetComponent::update() {
             }
         }
     }
+
+    this->store_.reset();
 }
 
 void FineOffsetComponent::register_sensor(uint8_t sensor_no, FineOffsetSensor* obj) {

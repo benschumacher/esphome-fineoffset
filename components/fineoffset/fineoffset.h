@@ -65,14 +65,20 @@ class FineOffsetStore {
     bool ready() { return (this->have_sensor_data_.load() != 0 || this->state_obj_ != nullptr); }
     void record_state();
 
-    std::pair<bool, const FineOffsetState&> get_state_for_sensor_no(uint32_t sensor_id) const {
-        auto it = state_by_sensor_id_.find(sensor_id);
-        if (it == state_by_sensor_id_.end()) {
+    std::pair<bool, const FineOffsetState> get_state_for_sensor_no(uint32_t sensor_id) const {
+        auto it = this->state_by_sensor_id_.find(sensor_id);
+        if (it == this->state_by_sensor_id_.end()) {
             return {false, FineOffsetState()};
         }
         return {true, it->second};
     }
-    std::pair<bool, const FineOffsetState&> get_last_state(FineOffsetTextSensorType) const;
+    std::pair<bool, const FineOffsetState> get_last_state(FineOffsetTextSensorType type) const;
+    void reset() {
+        this->states_.clear();
+        this->state_by_sensor_id_.clear();
+        this->last_bad_.reset();
+        this->last_unknown_.reset();
+    }
 
     static void intr_cb(FineOffsetStore* arg);
 
