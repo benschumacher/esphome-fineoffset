@@ -13,6 +13,13 @@
 #include <cstddef>
 #include <cstdint>
 
+#ifdef ESP_IDF_VERSION
+#include "esp_timer.h"
+#define GET_TIMESTAMP() esp_timer_get_time()
+#else
+#define GET_TIMESTAMP() micros()
+#endif
+
 namespace esphome {
 namespace fineoffset {
 
@@ -80,8 +87,8 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     static bool skip = true;
 
     // Use ESP32-specific high-resolution timer
-    const uint64_t now = esp_timer_get_time();  // More reliable than micros()
-                                                //
+    const uint64_t now = GET_TIMESTAMP();  // Use esp_timer_get_time() on ESP-IDF
+
     // Filter out too short pulses. This method works as a low pass filter.  (borroved from new remote reciever)
     edgeTimeStamp[1] = edgeTimeStamp[2];
     edgeTimeStamp[2] = now;
