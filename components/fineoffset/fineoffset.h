@@ -12,6 +12,8 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/gpio.h"
 
+#include "timing_analyzer.h"
+
 namespace esphome {
 class InternalGPIOPin;
 namespace fineoffset {
@@ -80,6 +82,9 @@ class FineOffsetStore {
         this->last_unknown_.reset();
     }
 
+    void enable_timing_analysis(bool enable) { this->timing_analyzer_.enable(enable); }
+    void log_timing_analysis() const { this->timing_analyzer_.log_analysis("fineoffset.timing"); }
+
     static void intr_cb(FineOffsetStore* arg);
 
    protected:
@@ -105,6 +110,8 @@ class FineOffsetStore {
 
     std::shared_ptr<FineOffsetState> last_bad_{nullptr};
     std::shared_ptr<FineOffsetState> last_unknown_{nullptr};
+
+    TimingAnalyzer timing_analyzer_{400, 600, 1300, 1700};  // TODO: replace w/ constants
 };
 
 class FineOffsetSensor;
@@ -115,6 +122,7 @@ class FineOffsetComponent : public PollingComponent {
     FineOffsetComponent() : store_(this) {}
 
     void set_pin(InternalGPIOPin* pin) { pin_ = pin; }
+    void enable_timing_analysis(bool enable) { store_.enable_timing_analysis(enable); }
     void setup() override {
         PollingComponent::setup();
         this->store_.setup(this->pin_);
@@ -130,6 +138,7 @@ class FineOffsetComponent : public PollingComponent {
    protected:
     FineOffsetStore store_;
     InternalGPIOPin* pin_;
+    bool timing_analysis_enabled_{false};
 
     std::map<uint32_t, FineOffsetSensor*> sensors_;
     std::vector<FineOffsetTextSensor*> text_sensors_;

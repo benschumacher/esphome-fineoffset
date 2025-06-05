@@ -15,6 +15,7 @@ fineoffset:
   - name: FineOffset Radio
     id: fineoffset_radio
     pin: GPIO33
+    timing_analysis: true
 
 sensor:
   - platform: fineoffset

@@ -51,36 +51,40 @@ std::string FineOffsetState::str() const {
     return data;
 }
 
-//--------------------------------------------------------
-// 1 is indicated by 500uS pulse
-// wh2_accept from 2 = 400us to 3 = 600us
-#define IS_HI_PULSE(interval) (interval >= 250 && interval <= 750)
-// 0 is indicated by ~1500us pulse
-// wh2_accept from 7 = 1400us to 8 = 1600us
-#define IS_LOW_PULSE(interval) (interval >= 1200 && interval <= 1750)
-// worst case packet length
-// 6 bytes x 8 bits =48
-#define IDLE_HAS_TIMED_OUT(interval) (interval > 1199)
-// our expected pulse should arrive after 1ms
-// we'll wh2_accept it if it arrives after
-// 4 x 200us = 800us
-#define IDLE_PERIOD_DONE(interval) (interval >= 751)
+const byte FLAG_VALID_PULSE = 0x01;
+const byte FLAG_BIT_VALUE_ONE = 0x02;
 
-// const auto GOT_PULSE = 0x01;
-// const auto LOGIC_HI = 0x02;
-#define GOT_PULSE 0x01
-#define LOGIC_HI 0x02
+const uint32_t one_bit_pulse_min_{400};  // '1' bit: 500μs nominal
+const uint32_t one_bit_pulse_max_{600};
+const uint32_t zero_bit_pulse_min_{1300};  // '0' bit: 1500μs nominal
+const uint32_t zero_bit_pulse_max_{1700};
+
+const uint32_t idle_timeout_{2000};
+const uint32_t idle_period_done_{800};
+const uint32_t min_pulse_width_{200};
+
+static bool is_one_bit_pulse(const uint32_t interval) {
+    return interval >= one_bit_pulse_min_ && interval <= one_bit_pulse_max_;
+}
+static bool is_zero_bit_pulse(const uint32_t interval) {
+    return interval >= zero_bit_pulse_min_ && interval <= zero_bit_pulse_max_;
+}
+static bool has_idle_timed_out(const uint32_t interval) { return interval > idle_timeout_; }
+static bool is_idle_period_done(const uint32_t interval) { return interval >= idle_period_done_; }
 
 FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent)
     : parent_(parent), state_obj_(nullptr), wh2_flags_{0}, packet_state_{0} {}
 
 void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
-    static unsigned long edgeTimeStamp[3] = {0};  // Timestamp of edges
+    static uint64_t edgeTimeStamp[3] = {0};  // Timestamp of edges
     static bool skip = true;
 
+    // Use ESP32-specific high-resolution timer
+    const uint64_t now = esp_timer_get_time();  // More reliable than micros()
+                                                //
     // Filter out too short pulses. This method works as a low pass filter.  (borroved from new remote reciever)
     edgeTimeStamp[1] = edgeTimeStamp[2];
-    edgeTimeStamp[2] = micros();
+    edgeTimeStamp[2] = now;
 
     if (skip) {
         skip = false;
@@ -94,8 +98,13 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
         return;
     }
 
-    unsigned int pulse = edgeTimeStamp[1] - edgeTimeStamp[0];
+    // Calculate pulse width - note: still safe to cast to uint32_t for pulse timing
+    // since pulses are only a few milliseconds at most
+    uint32_t pulse = (uint32_t) (edgeTimeStamp[1] - edgeTimeStamp[0]);
     edgeTimeStamp[0] = edgeTimeStamp[1];
+
+    // Record for analysis
+    self->timing_analyzer_.record_pulse(pulse);
 
     static byte wh2_flags = 0x00;
     static bool wh2_accept_flag = false;
@@ -111,20 +120,20 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     switch (sampling_state) {
         case 0:  // waiting
 
-            if (IS_HI_PULSE(pulse)) {
-                wh2_flags = GOT_PULSE | LOGIC_HI;
+            if (is_one_bit_pulse(pulse)) {
+                wh2_flags = FLAG_VALID_PULSE | FLAG_BIT_VALUE_ONE;
                 sampling_state = 1;
-            } else if (IS_LOW_PULSE(pulse)) {
-                wh2_flags = GOT_PULSE;  // logic low
+            } else if (is_zero_bit_pulse(pulse)) {
+                wh2_flags = FLAG_VALID_PULSE;  // Zeor bit (FLAG_BIT_VALUE_ONE not set)
             } else {
                 sampling_state = 0;
             }
             break;
         case 1:  // observe 1ms of idle time
-            if (IDLE_HAS_TIMED_OUT(pulse)) {
+            if (has_idle_timed_out(pulse)) {
                 sampling_state = 0;
                 wh2_packet_state = 1;
-            } else if (IDLE_PERIOD_DONE(pulse)) {
+            } else if (is_idle_period_done(pulse)) {
                 sampling_state = 0;
             } else {
                 sampling_state = 0;
@@ -139,7 +148,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
             // shift history right and store new value
             history <<= 1;
             // store a 1 if required (right shift along will store a 0)
-            if (wh2_flags & LOGIC_HI) {
+            if (wh2_flags & FLAG_BIT_VALUE_ONE) {
                 history |= 0x01;
             }
 
@@ -161,7 +170,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
         // acquire packet
         else if (wh2_packet_state == 2) {
             wh2_packet[packet_no] <<= 1;
-            if (wh2_flags & LOGIC_HI) {
+            if (wh2_flags & FLAG_BIT_VALUE_ONE) {
                 wh2_packet[packet_no] |= 0x01;
             }
             bit_no++;

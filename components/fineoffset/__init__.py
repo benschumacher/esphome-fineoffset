@@ -10,6 +10,7 @@ MULTI_CONF = True
 AUTO_LOAD = ["sensor"]
 
 CONF_FINEOFFSET_ID = "fineoffset_id"
+CONF_TIMING_ANALYSIS = "timing_analysis"
 
 fineoffset_ns = cg.esphome_ns.namespace("fineoffset")
 FineOffset = fineoffset_ns.class_("FineOffsetComponent", cg.Component)
@@ -20,6 +21,7 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): cv.declare_id(FineOffset),
             cv.Required(CONF_PIN): pins.internal_gpio_input_pin_schema,
             cv.Optional(CONF_NAME): cv.string,
+            cv.Optional(CONF_TIMING_ANALYSIS, default=False): cv.boolean,
         }
     ).extend(cv.polling_component_schema("60s")),
 )
@@ -36,3 +38,4 @@ async def to_code(config):
 
     pin = await cg.gpio_pin_expression(config[CONF_PIN])
     cg.add(var.set_pin(pin))
+    cg.add(var.enable_timing_analysis(config[CONF_TIMING_ANALYSIS]))
