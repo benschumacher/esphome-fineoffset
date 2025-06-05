@@ -133,7 +133,6 @@ class TimingAnalyzer {
         }
 
         ESP_LOGI(tag, "=== Timing Analysis Results ===");
-        ESP_LOGI(tag, "CPU Frequency: %u MHz", getCpuFrequencyMhz());
 
         // Short pulse analysis
         if (short_pulse_stats_.count > 0) {
