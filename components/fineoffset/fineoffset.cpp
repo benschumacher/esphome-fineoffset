@@ -44,9 +44,9 @@ std::string FineOffsetState::str() const {
     data += " | humidity: ";
     data += to_string(humidity);
     data += "% | temperature: ";
-    data += to_string(temperture_buf);
+    data += temperture_buf;
     data += "°C | ";
-    data += to_string(valid ? "OK " : "BAD");
+    data += (valid ? "OK " : "BAD");
 
     return data;
 }
