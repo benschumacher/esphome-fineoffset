@@ -279,6 +279,26 @@ void FineOffsetComponent::dump_config() {
     LOG_PIN("  Input Pin: ", this->pin_);
 }
 
+void FineOffsetComponent::setup() {
+    Component::setup();
+    this->store_.setup(this->pin_);
+
+    // Schedule recurring diagnostic logging for signal processing debugging
+    this->schedule_diagnostic_log();
+}
+
+void FineOffsetComponent::schedule_diagnostic_log() {
+    this->set_timeout("diagnostic_log", 60000, [this]() {
+        ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
+                 (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
+                 this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,
+                 this->store_.bad_count_);
+
+        // Reschedule for next interval
+        this->schedule_diagnostic_log();
+    });
+}
+
 void FineOffsetComponent::loop() {
     if (this->store_.ready()) {
         ESP_LOGD(TAG, "ready, core=%d", xPortGetCoreID());

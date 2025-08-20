@@ -143,10 +143,7 @@ class FineOffsetComponent : public Component {
     FineOffsetComponent() : store_(this) {}
 
     void set_pin(InternalGPIOPin* pin) { pin_ = pin; }
-    void setup() override {
-        Component::setup();
-        this->store_.setup(this->pin_);
-    }
+    void setup() override;
     void loop() override;
     void dump_config() override;
 
@@ -175,6 +172,8 @@ class FineOffsetComponent : public Component {
     FineOffsetStore store_;
     InternalGPIOPin* pin_;
     std::set<uint8_t> known_sensor_ids_;
+
+    void schedule_diagnostic_log();
 };
 
 }  // namespace fineoffset
