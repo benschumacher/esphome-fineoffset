@@ -10,7 +10,7 @@ from .. import fineoffset_ns, FINEOFFSET_CLIENT_SCHEMA, CONF_FINEOFFSET_ID
 DEPENDENCIES = ["fineoffset"]
 
 FineOffsetTextSensor = fineoffset_ns.class_(
-    "FineOffsetTextSensor", text_sensor.TextSensor, cg.Component
+    "FineOffsetTextSensor", text_sensor.TextSensor, cg.PollingComponent
 )
 FineOffsetTextSensorTypes = fineoffset_ns.enum("FineOffsetTextSensorTypes")
 
@@ -21,7 +21,7 @@ TYPES = {
     "unknown": FineOffsetTextSensorTypes.FINEOFFSET_TYPE_UNKNOWN,
 }
 
-CONFIG_SCHEMA = (
+CONFIG_SCHEMA = cv.All(
     text_sensor.text_sensor_schema(
         FineOffsetTextSensor,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -32,6 +32,7 @@ CONFIG_SCHEMA = (
             cv.Required(CONF_TYPE): cv.enum(TYPES, lower=True),
         }
     )
+    .extend(cv.polling_component_schema("60s"))
     .extend(FINEOFFSET_CLIENT_SCHEMA)
 )
 
@@ -44,4 +45,4 @@ async def to_code(config):
     cg.add(var.set_sensor_type(config[CONF_TYPE]))
 
     paren = await cg.get_variable(config[CONF_FINEOFFSET_ID])
-    cg.add(paren.register_text_sensor(var))
+    cg.add(var.set_parent(paren))

@@ -7,10 +7,11 @@
 namespace esphome {
 namespace fineoffset {
 
-class FineOffsetSensor : public sensor::Sensor, public Component, public FineOffsetChild {
+class FineOffsetSensor : public PollingComponent {
    public:
     void dump_config() override;
     void setup() override;
+    void update() override;
 
     uint8_t get_sensor_no() const { return this->sensor_no_; }
     void set_sensor_no(uint8_t sensor_no) { this->sensor_no_ = sensor_no; }
@@ -18,21 +19,12 @@ class FineOffsetSensor : public sensor::Sensor, public Component, public FineOff
     void set_temperature_sensor(sensor::Sensor* temperature_sensor) { this->temperature_sensor_ = temperature_sensor; }
     void set_humidity_sensor(sensor::Sensor* humidity_sensor) { this->humidity_sensor_ = humidity_sensor; }
 
-    void publish_temperature(float temperature) {
-        if (this->temperature_sensor_) {
-            this->temperature_sensor_->publish_state(temperature);
-        }
-    }
-    void publish_humidity(float humidity) {
-        if (this->humidity_sensor_) {
-            this->humidity_sensor_->publish_state(humidity);
-        }
-    }
+    void set_parent(FineOffsetComponent* parent) { this->parent_ = parent; }
+    FineOffsetComponent* get_parent() const { return this->parent_; }
 
    protected:
-    friend FineOffsetComponent;
-
     uint8_t sensor_no_;
+    FineOffsetComponent* parent_{nullptr};
 
     sensor::Sensor* temperature_sensor_{nullptr};
     sensor::Sensor* humidity_sensor_{nullptr};

@@ -1,0 +1,17 @@
+---
+esphome:
+  name: fineoffset-only-test
+  friendly_name: FineOffset Only Test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+external_components:
+  - source: components
+
+fineoffset:
+  - name: FineOffset Radio
+    id: fineoffset_radio
+    pin: GPIO33

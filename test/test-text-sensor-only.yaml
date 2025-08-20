@@ -1,0 +1,22 @@
+---
+esphome:
+  name: fineoffset-text-only-test
+  friendly_name: FineOffset Text Only Test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+external_components:
+  - source: components
+
+fineoffset:
+  - name: FineOffset Radio
+    id: fineoffset_radio
+    pin: GPIO33
+
+text_sensor:
+  - platform: fineoffset
+    name: Last Sensor Data
+    type: last

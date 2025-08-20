@@ -3,24 +3,46 @@
 #include <esp_types.h>
 
 #include <atomic>
+#include <deque>
 #include <map>
+#include <memory>
+#include <optional>
+#include <set>
 #include <vector>
 
-#include "esphome/components/sensor/sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/gpio.h"
+#include "esphome/core/helpers.h"
+
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
+#ifdef USE_TEXT_SENSOR
+#include "esphome/components/text_sensor/text_sensor.h"
+#endif
 
 namespace esphome {
 class InternalGPIOPin;
+namespace sensor {
+class Sensor;
+}
+namespace text_sensor {
+class TextSensor;
+}
 namespace fineoffset {
 
 class FineOffsetComponent;
+
+#ifdef USE_TEXT_SENSOR
 enum FineOffsetTextSensorType : uint8_t;
+#endif
 
 using byte = uint8_t;
+
+#ifdef USE_SENSOR
 using FineOffsetChild = Parented<FineOffsetComponent>;
+#endif
 
 struct FineOffsetState {
     FineOffsetState() = default;
@@ -72,7 +94,9 @@ class FineOffsetStore {
         }
         return {true, it->second};
     }
+#ifdef USE_TEXT_SENSOR
     std::pair<bool, const FineOffsetState> get_last_state(FineOffsetTextSensorType type) const;
+#endif
     void reset() {
         this->states_.clear();
         this->state_by_sensor_id_.clear();
@@ -107,32 +131,50 @@ class FineOffsetStore {
     std::shared_ptr<FineOffsetState> last_unknown_{nullptr};
 };
 
+#ifdef USE_SENSOR
 class FineOffsetSensor;
+#endif
+#ifdef USE_TEXT_SENSOR
 class FineOffsetTextSensor;
+#endif
 
-class FineOffsetComponent : public PollingComponent {
+class FineOffsetComponent : public Component {
    public:
     FineOffsetComponent() : store_(this) {}
 
     void set_pin(InternalGPIOPin* pin) { pin_ = pin; }
     void setup() override {
-        PollingComponent::setup();
+        Component::setup();
         this->store_.setup(this->pin_);
     }
     void loop() override;
     void dump_config() override;
-    void update() override;
 
-    void register_sensor(uint8_t sensor_no, FineOffsetSensor* obj);
-    void register_text_sensor(FineOffsetTextSensor* obj);
-    bool is_unknown(uint8_t sensor_no) const { return this->sensors_.find(sensor_no) == this->sensors_.end(); }
+    // Public API for sensors to pull data
+    std::optional<FineOffsetState> get_state_for_sensor_no(uint8_t sensor_no) const {
+        auto it = this->store_.state_by_sensor_id_.find(sensor_no);
+        return it != this->store_.state_by_sensor_id_.end() ? std::make_optional(it->second) : std::nullopt;
+    }
+
+    // Register known sensor IDs for unknown sensor detection
+    void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.insert(sensor_no); }
+
+    bool is_unknown_sensor(uint8_t sensor_no) const {
+        return this->known_sensor_ids_.find(sensor_no) == this->known_sensor_ids_.end();
+    }
+
+#ifdef USE_TEXT_SENSOR
+    std::optional<FineOffsetState> get_last_state(FineOffsetTextSensorType type) const {
+        auto [found, state] = this->store_.get_last_state(type);
+        return found ? std::make_optional(state) : std::nullopt;
+    }
+#endif
 
    protected:
+    friend class FineOffsetStore;
     FineOffsetStore store_;
     InternalGPIOPin* pin_;
-
-    std::map<uint32_t, FineOffsetSensor*> sensors_;
-    std::vector<FineOffsetTextSensor*> text_sensors_;
+    std::set<uint8_t> known_sensor_ids_;
 };
 
 }  // namespace fineoffset

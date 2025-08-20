@@ -6,14 +6,29 @@ namespace fineoffset {
 
 static const char* TAG = "fineoffset.sensor";
 
-void FineOffsetSensor::setup() {
-    ESP_LOGCONFIG(TAG, "Setting up FineOffset Sensor...");
-    // Initialization code here
-}
+void FineOffsetSensor::setup() { ESP_LOGCONFIG(TAG, "Setting up FineOffset Sensor..."); }
 
 void FineOffsetSensor::dump_config() {
     ESP_LOGCONFIG(TAG, "FineOffset Sensor:");
-    // Configuration dump code here
+    ESP_LOGCONFIG(TAG, "  Sensor No: %d", this->sensor_no_);
+    LOG_UPDATE_INTERVAL(this);
+}
+
+void FineOffsetSensor::update() {
+    if (this->parent_ == nullptr) {
+        ESP_LOGW(TAG, "No parent set for sensor %d", this->sensor_no_);
+        return;
+    }
+
+    auto state = this->parent_->get_state_for_sensor_no(this->sensor_no_);
+    if (state.has_value()) {
+        if (this->temperature_sensor_) {
+            this->temperature_sensor_->publish_state(state->temperature * 0.1f);
+        }
+        if (this->humidity_sensor_) {
+            this->humidity_sensor_->publish_state(state->humidity);
+        }
+    }
 }
 
 }  // namespace fineoffset

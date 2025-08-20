@@ -19,21 +19,19 @@ fineoffset:
 sensor:
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
-    name: Deck
     sensor_no: 77
     temperature:
-      name: Temperature
+      name: Deck Temperature
     humidity:
-      name: Humidity
+      name: Deck Humidity
 
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
-    name: Mudroom
     sensor_no: 23
     temperature:
       name: Temperature
     humidity:
-      name: Humditiy
+      name: Humidity
 
 text_sensor:
   - platform: fineoffset

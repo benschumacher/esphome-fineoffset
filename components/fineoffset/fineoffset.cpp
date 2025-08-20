@@ -233,7 +233,7 @@ void FineOffsetStore::record_state() {
             if (!result.second) {
                 result.first->second = *state;
             }
-            if (this->parent_->is_unknown(state->sensor_id)) {
+            if (this->parent_->is_unknown_sensor(state->sensor_id)) {
                 this->last_unknown_ = state;
             }
         } else {
@@ -247,6 +247,7 @@ void FineOffsetStore::record_state() {
     this->wh2_flags_.store(0);
 }
 
+#ifdef USE_TEXT_SENSOR
 std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
     switch (sensor_type) {
         case FINEOFFSET_TYPE_LAST:
@@ -271,21 +272,11 @@ std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffse
 
     return {false, FineOffsetState()};
 }
+#endif
 
 void FineOffsetComponent::dump_config() {
-    ESP_LOGCONFIG(TAG, "Setting up FineOFfset...");
+    ESP_LOGCONFIG(TAG, "Setting up FineOffset...");
     LOG_PIN("  Input Pin: ", this->pin_);
-    LOG_UPDATE_INTERVAL(this);
-
-    for (auto it : this->sensors_) {
-        LOG_SENSOR("  ", "Sensor", it.second);
-        // ESP_LOGCONFIG("  ", "Sensor '%d':", it.first);
-        // it.second->dump_config();
-    }
-
-    for (auto sensor : this->text_sensors_) {
-        LOG_TEXT_SENSOR("  ", "Text sensor", sensor);
-    }
 }
 
 void FineOffsetComponent::loop() {
@@ -293,53 +284,6 @@ void FineOffsetComponent::loop() {
         ESP_LOGD(TAG, "ready, core=%d", xPortGetCoreID());
         this->store_.record_state();
     }
-}
-
-void FineOffsetComponent::update() {
-    ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
-             (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
-             this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,
-             this->store_.bad_count_);
-
-    // if (!this->store_.skip_) {
-    //     ESP_LOGD(TAG, "sampling_state_=%d sample_count_=%d wh2_flags_=%d  wh2_packet_no_=%d last_millis_=%lu",
-    //              this->store_.sampling_state_, this->store_.sample_count_, this->store_.wh2_flags_,
-    //              this->store_.packet_no_, this->store_.last_interval_);
-    //     ESP_LOGD(TAG, "edge_millis_0=%lu", this->store_.edge_millis_0);
-    //     ESP_LOGD(TAG, "edge_millis_1=%lu", this->store_.edge_millis_1);
-    //     ESP_LOGD(TAG, "edge_millis_2=%lu", this->store_.edge_millis_2);
-    // }
-
-    for (auto it : this->sensors_) {
-        auto [found, state] = this->store_.get_state_for_sensor_no(it.first);
-        if (found) {
-            it.second->publish_temperature(state.temperature * 0.1f);
-            it.second->publish_humidity(state.humidity);
-        }
-    }
-
-    for (auto text_sensor : this->text_sensors_) {
-        auto [found, state] = this->store_.get_last_state(text_sensor->get_sensor_type());
-
-        if (found) {
-            if (state.str() != text_sensor->state) {
-                text_sensor->publish_state(state.str().c_str());
-            }
-        }
-    }
-
-    this->store_.reset();
-}
-
-void FineOffsetComponent::register_sensor(uint8_t sensor_no, FineOffsetSensor* obj) {
-    obj->set_sensor_no(sensor_no);
-    obj->set_parent(this);
-    this->sensors_.insert({sensor_no, obj});
-}
-
-void FineOffsetComponent::register_text_sensor(FineOffsetTextSensor* obj) {
-    obj->set_parent(this);
-    this->text_sensors_.push_back(obj);
 }
 
 }  // namespace fineoffset
