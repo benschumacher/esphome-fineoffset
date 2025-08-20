@@ -18,19 +18,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 To avoid requiring local Python/ESPHome installation, use Docker:
 
 ```bash
-# Create convenient alias (add to ~/.bashrc or ~/.zshrc)
-alias esphome='docker run -it --rm \
+# Test compilation
+docker run -it --rm \
   -v "$PWD:/config" \
   -v "$HOME/.cache/esphome/cache:/cache" \
   -v "$HOME/.cache/esphome/build:/build" \
   -v /etc/localtime:/etc/localtime:ro \
-  esphome/esphome:stable'
-
-# Test compilation
-esphome compile example.yaml
+  esphome/esphome:stable compile example.yaml
 
 # Check configuration
-esphome config example.yaml
+docker run -it --rm \
+  -v "$PWD:/config" \
+  -v "$HOME/.cache/esphome/cache:/cache" \
+  -v "$HOME/.cache/esphome/build:/build" \
+  -v /etc/localtime:/etc/localtime:ro \
+  esphome/esphome:stable config example.yaml
 ```
 
 ## Architecture
