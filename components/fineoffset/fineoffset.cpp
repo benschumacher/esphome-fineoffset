@@ -71,8 +71,7 @@ std::string FineOffsetState::str() const {
 #define GOT_PULSE 0x01
 #define LOGIC_HI 0x02
 
-FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent)
-    : parent_(parent), state_obj_(nullptr), wh2_flags_{0}, packet_state_{0} {}
+FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent) : parent_(parent), wh2_flags_{0}, packet_state_{0} {}
 
 void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     static unsigned long edgeTimeStamp[3] = {0};  // Timestamp of edges
@@ -191,14 +190,16 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
                 wh2_valid = false;
             }
 
-            std::shared_ptr<FineOffsetState> state(new FineOffsetState(wh2_packet));
+            FineOffsetState state(wh2_packet);  // Direct value construction - no heap allocation
 
             // avoid change sensor data during update
             if (wh2_valid == true && self->have_sensor_data_.load() == 0) {
                 self->state_obj_ = state;
-                self->have_sensor_data_.store(state->sensor_id);
+                self->has_pending_state_ = true;
+                self->have_sensor_data_.store(state.sensor_id);
             } else if (!wh2_valid && self->have_sensor_data_.load() == 0) {
                 self->state_obj_ = state;
+                self->has_pending_state_ = true;
             }
 
             wh2_accept_flag = false;
@@ -219,28 +220,41 @@ bool FineOffsetStore::accept() {
 }
 
 void FineOffsetStore::record_state() {
-    std::shared_ptr<FineOffsetState> state(this->state_obj_);
-    this->state_obj_.reset();
+    if (!this->has_pending_state_) {
+        return;
+    }
 
-    if (state->sensor_id != 0) {
-        if (this->states_.size() == 10) {
-            this->states_.pop_front();
+    FineOffsetState state = this->state_obj_;
+    this->has_pending_state_ = false;
+
+    if (state.sensor_id != 0) {
+        // Add to circular buffer (replaces std::deque)
+        this->states_[this->states_head_] = state;
+        this->states_head_ = (this->states_head_ + 1) % MAX_STATES;
+        if (this->states_count_ < MAX_STATES) {
+            this->states_count_++;
         }
-        this->states_.push_back(*state);
 
-        if (state->valid) {
-            const auto result = this->state_by_sensor_id_.insert({state->sensor_id, *state});
-            if (!result.second) {
-                result.first->second = *state;
+        if (state.valid) {
+            // Only store for registered sensors or if sensor discovery is enabled
+            if (state.sensor_id < MAX_SENSOR_IDS) {
+                this->sensor_states_[state.sensor_id] = state;
+                this->sensor_states_valid_[state.sensor_id] = true;
+                this->sensor_states_consumed_[state.sensor_id] = false;  // Mark as fresh data
             }
-            if (this->parent_->is_unknown_sensor(state->sensor_id)) {
+
+            if (this->parent_->is_unknown_sensor(state.sensor_id)) {
                 this->last_unknown_ = state;
+                this->has_last_unknown_ = true;
+                this->last_unknown_consumed_ = false;  // Mark as fresh data
             }
         } else {
             this->last_bad_ = state;
+            this->has_last_bad_ = true;
+            this->last_bad_consumed_ = false;  // Mark as fresh data
         }
 
-        ESP_LOGD(TAG, "%s", state->str().c_str());
+        ESP_LOGD(TAG, "%s", state.str().c_str());
     }
 
     this->have_sensor_data_.store(0);
@@ -248,24 +262,27 @@ void FineOffsetStore::record_state() {
 }
 
 #ifdef USE_TEXT_SENSOR
-std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
+std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) {
     switch (sensor_type) {
         case FINEOFFSET_TYPE_LAST:
-            if (!this->states_.empty()) {
-                FineOffsetState state = this->states_.back();
-                return {true, state};
+            if (this->states_count_ > 0) {
+                // Get the most recent state from circular buffer
+                uint8_t last_index = (this->states_head_ + MAX_STATES - 1) % MAX_STATES;
+                return {true, this->states_[last_index]};
             }
             break;
         case FINEOFFSET_TYPE_LAST_BAD:
-            if (this->last_bad_ != nullptr) {
-                auto state = *this->last_bad_;
-                return {true, state};
+            if (this->has_last_bad_) {
+                // Mark as consumed for selective clearing
+                this->last_bad_consumed_ = true;
+                return {true, this->last_bad_};
             }
             break;
         case FINEOFFSET_TYPE_UNKNOWN:
-            if (this->last_unknown_ != nullptr) {
-                auto state = *this->last_unknown_;
-                return {true, state};
+            if (this->has_last_unknown_) {
+                // Mark as consumed for selective clearing
+                this->last_unknown_consumed_ = true;
+                return {true, this->last_unknown_};
             }
             break;
     }
@@ -293,6 +310,9 @@ void FineOffsetComponent::schedule_diagnostic_log() {
                  (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
                  this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,
                  this->store_.bad_count_);
+
+        // Perform periodic cleanup of consumed sensor data (critical for data freshness)
+        this->store_.periodic_cleanup();
 
         // Reschedule for next interval
         this->schedule_diagnostic_log();
