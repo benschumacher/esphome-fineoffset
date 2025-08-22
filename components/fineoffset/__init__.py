@@ -7,7 +7,6 @@ from esphome import pins
 from esphome.const import CONF_ID, CONF_NAME, CONF_PIN
 
 MULTI_CONF = True
-AUTO_LOAD = ["sensor"]
 
 CONF_FINEOFFSET_ID = "fineoffset_id"
 
@@ -21,7 +20,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_PIN): pins.internal_gpio_input_pin_schema,
             cv.Optional(CONF_NAME): cv.string,
         }
-    ).extend(cv.polling_component_schema("60s")),
+    ),
 )
 
 FINEOFFSET_CLIENT_SCHEMA = cv.Schema(

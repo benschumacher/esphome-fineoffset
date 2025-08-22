@@ -1,0 +1,67 @@
+---
+esphome:
+  name: fineoffset-memory-stress-test
+  friendly_name: FineOffset Memory Stress Test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+external_components:
+  - source: ../components
+
+# Test with many sensors to verify no memory leaks
+fineoffset:
+  - name: FineOffset Radio
+    id: fineoffset_radio
+    pin: GPIO33
+
+# Test multiple sensors with different update intervals
+sensor:
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    sensor_no: 1
+    update_interval: 10s
+    temperature:
+      name: "Sensor 1 Temperature"
+    humidity:
+      name: "Sensor 1 Humidity"
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    sensor_no: 77
+    update_interval: 30s
+    temperature:
+      name: "Sensor 77 Temperature"
+    humidity:
+      name: "Sensor 77 Humidity"
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    sensor_no: 255
+    update_interval: 60s
+    temperature:
+      name: "Sensor 255 Temperature"
+    humidity:
+      name: "Sensor 255 Humidity"
+
+# Test all text sensor types
+text_sensor:
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    name: "Last Sensor Data"
+    type: last
+    update_interval: 15s
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    name: "Last Bad Data"
+    type: last_bad
+    update_interval: 20s
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    name: "Unknown Sensors"
+    type: unknown
+    update_interval: 25s

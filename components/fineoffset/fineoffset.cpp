@@ -71,8 +71,7 @@ std::string FineOffsetState::str() const {
 #define GOT_PULSE 0x01
 #define LOGIC_HI 0x02
 
-FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent)
-    : parent_(parent), state_obj_(nullptr), wh2_flags_{0}, packet_state_{0} {}
+FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent) : parent_(parent), wh2_flags_{0}, packet_state_{0} {}
 
 void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     static unsigned long edgeTimeStamp[3] = {0};  // Timestamp of edges
@@ -191,14 +190,16 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
                 wh2_valid = false;
             }
 
-            std::shared_ptr<FineOffsetState> state(new FineOffsetState(wh2_packet));
+            FineOffsetState state(wh2_packet);  // Direct value construction - no heap allocation
 
             // avoid change sensor data during update
             if (wh2_valid == true && self->have_sensor_data_.load() == 0) {
                 self->state_obj_ = state;
-                self->have_sensor_data_.store(state->sensor_id);
+                self->has_pending_state_ = true;
+                self->have_sensor_data_.store(state.sensor_id);
             } else if (!wh2_valid && self->have_sensor_data_.load() == 0) {
                 self->state_obj_ = state;
+                self->has_pending_state_ = true;
             }
 
             wh2_accept_flag = false;
@@ -219,127 +220,114 @@ bool FineOffsetStore::accept() {
 }
 
 void FineOffsetStore::record_state() {
-    std::shared_ptr<FineOffsetState> state(this->state_obj_);
-    this->state_obj_.reset();
+    if (!this->has_pending_state_) {
+        return;
+    }
 
-    if (state->sensor_id != 0) {
-        if (this->states_.size() == 10) {
-            this->states_.pop_front();
+    FineOffsetState state = this->state_obj_;
+    this->has_pending_state_ = false;
+
+    if (state.sensor_id != 0) {
+        // Add to circular buffer (replaces std::deque)
+        this->states_[this->states_head_] = state;
+        this->states_head_ = (this->states_head_ + 1) % config::MAX_RECENT_STATES;
+        if (this->states_count_ < config::MAX_RECENT_STATES) {
+            this->states_count_++;
         }
-        this->states_.push_back(*state);
 
-        if (state->valid) {
-            const auto result = this->state_by_sensor_id_.insert({state->sensor_id, *state});
-            if (!result.second) {
-                result.first->second = *state;
+        if (state.valid) {
+            // Only store for registered sensors or if sensor discovery is enabled
+            if (state.sensor_id < config::MAX_SENSOR_IDS) {
+                this->sensor_states_[state.sensor_id] = state;
+                this->sensor_states_valid_[state.sensor_id] = true;
+                this->sensor_states_consumed_[state.sensor_id] = false;  // Mark as fresh data
             }
-            if (this->parent_->is_unknown(state->sensor_id)) {
+
+            if (this->parent_->is_unknown_sensor(state.sensor_id)) {
                 this->last_unknown_ = state;
+                this->has_last_unknown_ = true;
+                this->last_unknown_consumed_ = false;  // Mark as fresh data
             }
         } else {
             this->last_bad_ = state;
+            this->has_last_bad_ = true;
+            this->last_bad_consumed_ = false;  // Mark as fresh data
         }
 
-        ESP_LOGD(TAG, "%s", state->str().c_str());
+        if (state.valid) {
+            ESP_LOGD(TAG, "%s", state.str().c_str());
+        } else {
+            ESP_LOGV(TAG, "%s", state.str().c_str());
+        }
     }
 
     this->have_sensor_data_.store(0);
     this->wh2_flags_.store(0);
 }
 
-std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) const {
+#ifdef USE_TEXT_SENSOR
+std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) {
     switch (sensor_type) {
         case FINEOFFSET_TYPE_LAST:
-            if (!this->states_.empty()) {
-                FineOffsetState state = this->states_.back();
-                return {true, state};
+            if (this->states_count_ > 0) {
+                // Get the most recent state from circular buffer
+                uint8_t last_index = (this->states_head_ + config::MAX_RECENT_STATES - 1) % config::MAX_RECENT_STATES;
+                return {true, this->states_[last_index]};
             }
             break;
         case FINEOFFSET_TYPE_LAST_BAD:
-            if (this->last_bad_ != nullptr) {
-                auto state = *this->last_bad_;
-                return {true, state};
+            if (this->has_last_bad_) {
+                // Mark as consumed for selective clearing
+                this->last_bad_consumed_ = true;
+                return {true, this->last_bad_};
             }
             break;
         case FINEOFFSET_TYPE_UNKNOWN:
-            if (this->last_unknown_ != nullptr) {
-                auto state = *this->last_unknown_;
-                return {true, state};
+            if (this->has_last_unknown_) {
+                // Mark as consumed for selective clearing
+                this->last_unknown_consumed_ = true;
+                return {true, this->last_unknown_};
             }
             break;
     }
 
     return {false, FineOffsetState()};
 }
+#endif
 
 void FineOffsetComponent::dump_config() {
-    ESP_LOGCONFIG(TAG, "Setting up FineOFfset...");
+    ESP_LOGCONFIG(TAG, "Setting up FineOffset...");
     LOG_PIN("  Input Pin: ", this->pin_);
-    LOG_UPDATE_INTERVAL(this);
+}
 
-    for (auto it : this->sensors_) {
-        LOG_SENSOR("  ", "Sensor", it.second);
-        // ESP_LOGCONFIG("  ", "Sensor '%d':", it.first);
-        // it.second->dump_config();
-    }
+void FineOffsetComponent::setup() {
+    Component::setup();
+    this->store_.setup(this->pin_);
 
-    for (auto sensor : this->text_sensors_) {
-        LOG_TEXT_SENSOR("  ", "Text sensor", sensor);
-    }
+    // Schedule recurring diagnostic logging for signal processing debugging
+    this->schedule_diagnostic_log();
+}
+
+void FineOffsetComponent::schedule_diagnostic_log() {
+    this->set_timeout("diagnostic_log", config::DIAGNOSTIC_LOG_INTERVAL_MS, [this]() {
+        ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
+                 (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
+                 this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,
+                 this->store_.bad_count_);
+
+        // Perform periodic cleanup of consumed sensor data (critical for data freshness)
+        this->store_.periodic_cleanup();
+
+        // Reschedule for next interval
+        this->schedule_diagnostic_log();
+    });
 }
 
 void FineOffsetComponent::loop() {
     if (this->store_.ready()) {
-        ESP_LOGD(TAG, "ready, core=%d", xPortGetCoreID());
+        ESP_LOGV(TAG, "ready, core=%d", xPortGetCoreID());
         this->store_.record_state();
     }
-}
-
-void FineOffsetComponent::update() {
-    ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
-             (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
-             this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,
-             this->store_.bad_count_);
-
-    // if (!this->store_.skip_) {
-    //     ESP_LOGD(TAG, "sampling_state_=%d sample_count_=%d wh2_flags_=%d  wh2_packet_no_=%d last_millis_=%lu",
-    //              this->store_.sampling_state_, this->store_.sample_count_, this->store_.wh2_flags_,
-    //              this->store_.packet_no_, this->store_.last_interval_);
-    //     ESP_LOGD(TAG, "edge_millis_0=%lu", this->store_.edge_millis_0);
-    //     ESP_LOGD(TAG, "edge_millis_1=%lu", this->store_.edge_millis_1);
-    //     ESP_LOGD(TAG, "edge_millis_2=%lu", this->store_.edge_millis_2);
-    // }
-
-    for (auto it : this->sensors_) {
-        auto [found, state] = this->store_.get_state_for_sensor_no(it.first);
-        if (found) {
-            it.second->publish_temperature(state.temperature * 0.1f);
-            it.second->publish_humidity(state.humidity);
-        }
-    }
-
-    for (auto text_sensor : this->text_sensors_) {
-        auto [found, state] = this->store_.get_last_state(text_sensor->get_sensor_type());
-
-        if (found) {
-            if (state.str() != text_sensor->state) {
-                text_sensor->publish_state(state.str().c_str());
-            }
-        }
-    }
-
-    this->store_.reset();
-}
-
-void FineOffsetComponent::register_sensor(uint8_t sensor_no, FineOffsetSensor* obj) {
-    obj->set_sensor_no(sensor_no);
-    obj->set_parent(this);
-    this->sensors_.insert({sensor_no, obj});
-}
-
-void FineOffsetComponent::register_text_sensor(FineOffsetTextSensor* obj) {
-    obj->set_parent(this);
-    this->text_sensors_.push_back(obj);
 }
 
 }  // namespace fineoffset

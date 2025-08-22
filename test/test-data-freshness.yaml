@@ -1,0 +1,57 @@
+---
+esphome:
+  name: fineoffset-data-freshness-test
+  friendly_name: FineOffset Data Freshness Test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable debug logging to verify data freshness behavior
+logger:
+  level: DEBUG
+  logs:
+    fineoffset: DEBUG
+
+external_components:
+  - source: ../components
+
+fineoffset:
+  - name: FineOffset Radio
+    id: fineoffset_radio
+    pin: GPIO33
+
+# Test different update intervals to verify selective clearing
+sensor:
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    sensor_no: 77
+    update_interval: 30s  # Updates every 30s
+    temperature:
+      name: "Frequent Temp"
+    humidity:
+      name: "Frequent Humidity"
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    sensor_no: 23
+    update_interval: 90s  # Updates every 90s (spans multiple cleanup cycles)
+    temperature:
+      name: "Infrequent Temp"
+    humidity:
+      name: "Infrequent Humidity"
+
+# Text sensors to verify data freshness behavior
+text_sensor:
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    name: "Last Bad Frequent"
+    type: last_bad
+    update_interval: 45s  # Should see data cleared after consumption
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    name: "Unknown Infrequent"
+    type: unknown
+    update_interval: 120s  # Very infrequent updates

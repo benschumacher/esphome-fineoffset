@@ -19,7 +19,7 @@ To avoid requiring local Python/ESPHome installation, use Docker:
 
 ```bash
 # Test compilation
-docker run -it --rm \
+docker run --rm \
   -v "$PWD:/config" \
   -v "$HOME/.cache/esphome/cache:/cache" \
   -v "$HOME/.cache/esphome/build:/build" \
@@ -27,7 +27,7 @@ docker run -it --rm \
   esphome/esphome:stable compile example.yaml
 
 # Check configuration
-docker run -it --rm \
+docker run --rm \
   -v "$PWD:/config" \
   -v "$HOME/.cache/esphome/cache:/cache" \
   -v "$HOME/.cache/esphome/build:/build" \

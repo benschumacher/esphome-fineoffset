@@ -1,0 +1,49 @@
+---
+esphome:
+  name: fineoffset-edge-cases-test
+  friendly_name: FineOffset Edge Cases Test
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+external_components:
+  - source: ../components
+
+fineoffset:
+  - name: FineOffset Radio
+    id: fineoffset_radio
+    pin: GPIO33
+
+# Test edge case sensor IDs (boundary conditions)
+sensor:
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    sensor_no: 0  # Minimum sensor ID
+    temperature:
+      name: "Sensor 0 Temperature"
+    humidity:
+      name: "Sensor 0 Humidity"
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    sensor_no: 255  # Maximum sensor ID
+    temperature:
+      name: "Sensor 255 Temperature"
+    humidity:
+      name: "Sensor 255 Humidity"
+
+# Test very fast update intervals (stress test)
+text_sensor:
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    name: "High Frequency Last"
+    type: last
+    update_interval: 1s
+
+  - platform: fineoffset
+    fineoffset_id: fineoffset_radio
+    name: "High Frequency Bad"
+    type: last_bad
+    update_interval: 2s

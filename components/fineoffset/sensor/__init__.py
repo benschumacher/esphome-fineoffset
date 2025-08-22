@@ -16,16 +16,16 @@ from .. import fineoffset_ns, FINEOFFSET_CLIENT_SCHEMA, CONF_FINEOFFSET_ID
 
 DEPENDENCIES = ["fineoffset"]
 
-FineOffsetSensor = fineoffset_ns.class_("FineOffsetSensor", sensor.Sensor, cg.Component)
+FineOffsetSensor = fineoffset_ns.class_("FineOffsetSensor", cg.PollingComponent)
 
 CONF_SERIAL_NO = "sensor_no"
 CONF_TEMPERATURE = "temperature"
 CONF_HUMIDITY = "humidity"
 
-CONFIG_SCHEMA = (
-    sensor.sensor_schema(FineOffsetSensor)
-    .extend(
+CONFIG_SCHEMA = cv.All(
+    cv.Schema(
         {
+            cv.GenerateID(): cv.declare_id(FineOffsetSensor),
             cv.Required(CONF_SERIAL_NO): cv.int_range(0, 255),
             cv.Optional(CONF_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
@@ -41,6 +41,7 @@ CONFIG_SCHEMA = (
             ),
         }
     )
+    .extend(cv.polling_component_schema("60s"))
     .extend(FINEOFFSET_CLIENT_SCHEMA)
 )
 
@@ -52,7 +53,11 @@ async def to_code(config):
 
     paren = await cg.get_variable(config[CONF_FINEOFFSET_ID])
     sensor_no = config[CONF_SERIAL_NO]
-    cg.add(paren.register_sensor(sensor_no, var))
+
+    # Set up parent relationship and register as known sensor
+    cg.add(var.set_sensor_no(sensor_no))
+    cg.add(var.set_parent(paren))
+    cg.add(paren.register_known_sensor(sensor_no))
 
     if temperature_sensor_config := config.get(CONF_TEMPERATURE):
         temperature_sensor = cg.new_Pvariable(temperature_sensor_config[CONF_ID])
