@@ -9,7 +9,7 @@ esp32:
     type: arduino
 
 external_components:
-  - source: components
+  - source: ../components
 
 fineoffset:
   - name: FineOffset Radio

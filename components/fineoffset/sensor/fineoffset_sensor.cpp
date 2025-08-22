@@ -20,13 +20,14 @@ void FineOffsetSensor::update() {
         return;
     }
 
-    auto state = this->parent_->get_state_for_sensor_no(this->sensor_no_);
-    if (state.has_value()) {
+    auto state_guard = this->parent_->get_state_for_sensor_no(this->sensor_no_);
+    if (state_guard.has_value()) {
+        const auto& state = state_guard->get();
         if (this->temperature_sensor_) {
-            this->temperature_sensor_->publish_state(state->temperature * 0.1f);
+            this->temperature_sensor_->publish_state(state.temperature * 0.1f);
         }
         if (this->humidity_sensor_) {
-            this->humidity_sensor_->publish_state(state->humidity);
+            this->humidity_sensor_->publish_state(state.humidity);
         }
     }
 }

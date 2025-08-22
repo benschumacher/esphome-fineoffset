@@ -39,6 +39,30 @@ static constexpr size_t MAX_SENSOR_IDS = 256;                  // Maximum number
 static constexpr uint32_t DIAGNOSTIC_LOG_INTERVAL_MS = 60000;  // Diagnostic logging interval
 }  // namespace config
 
+// RAII helper for automatic consumed state tracking
+template<typename T> class ConsumedStateGuard {
+   public:
+    ConsumedStateGuard(const T& data, bool* consumed_flag) : data_(data), consumed_flag_(consumed_flag) {}
+    ~ConsumedStateGuard() {
+        if (consumed_flag_)
+            *consumed_flag_ = true;
+    }
+
+    // Move-only semantics
+    ConsumedStateGuard(const ConsumedStateGuard&) = delete;
+    ConsumedStateGuard& operator=(const ConsumedStateGuard&) = delete;
+    ConsumedStateGuard(ConsumedStateGuard&& other) noexcept
+        : data_(std::move(other.data_)), consumed_flag_(other.consumed_flag_) {
+        other.consumed_flag_ = nullptr;
+    }
+
+    const T& get() const { return data_; }
+
+   private:
+    T data_;
+    bool* consumed_flag_;
+};
+
 class FineOffsetComponent;
 
 #ifdef USE_TEXT_SENSOR
@@ -56,11 +80,15 @@ struct FineOffsetState {
     FineOffsetState(byte packet[5]);
 
     std::string str() const;
+    bool is_plausible() const {
+        return humidity <= 100 && temperature >= -400 && temperature <= 800;  // -40.0°C to 80.0°C (in 0.1°C units)
+    }
 
     uint32_t sensor_id{0};
     int32_t temperature{0};
     uint32_t humidity{0};
     bool valid{false};
+    bool plausible{false};
 
     static uint8_t crc8ish(const byte data[], uint8_t len) {
         uint8_t crc = 0;
@@ -94,23 +122,22 @@ class FineOffsetStore {
     bool ready() { return (this->have_sensor_data_.load() != 0 || this->has_pending_state_); }
     void record_state();
 
-    std::pair<bool, const FineOffsetState> get_state_for_sensor_no(uint32_t sensor_id) {
+    std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint32_t sensor_id) {
         if (sensor_id >= config::MAX_SENSOR_IDS || !this->sensor_states_valid_[sensor_id]) {
-            return {false, FineOffsetState()};
+            return std::nullopt;
         }
-        // Mark as consumed for selective clearing
-        this->sensor_states_consumed_[sensor_id] = true;
-        return {true, this->sensor_states_[sensor_id]};
+        return ConsumedStateGuard<FineOffsetState>(this->sensor_states_[sensor_id],
+                                                   &this->sensor_states_consumed_[sensor_id]);
     }
 #ifdef USE_TEXT_SENSOR
-    std::pair<bool, const FineOffsetState> get_last_state(FineOffsetTextSensorType type);
+    std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type);
 #endif
     // Periodic cleanup of consumed data (called every 60s for data freshness)
     void periodic_cleanup() { this->reset(); }
 
     // Manual reset for full cleanup (for testing/debugging)
     void reset() {
-        // Selective clearing: only clear consumed data to maintain data freshness
+        // Clear consumed data to maintain data freshness
         for (size_t i = 0; i < config::MAX_SENSOR_IDS; ++i) {
             if (this->sensor_states_consumed_[i]) {
                 this->sensor_states_valid_[i] = false;
@@ -128,7 +155,7 @@ class FineOffsetStore {
             this->last_unknown_consumed_ = false;
         }
 
-        // Always clear the circular buffer as it's not sensor-specific
+        // Clear the circular buffer (not sensor-specific)
         this->states_count_ = 0;
         this->states_head_ = 0;
     }
@@ -192,9 +219,8 @@ class FineOffsetComponent : public Component {
     void dump_config() override;
 
     // Public API for sensors to pull data
-    std::optional<FineOffsetState> get_state_for_sensor_no(uint8_t sensor_no) {
-        auto [found, state] = this->store_.get_state_for_sensor_no(sensor_no);
-        return found ? std::make_optional(state) : std::nullopt;
+    std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint8_t sensor_no) {
+        return this->store_.get_state_for_sensor_no(sensor_no);
     }
 
     // Register known sensor IDs for unknown sensor detection
@@ -205,9 +231,8 @@ class FineOffsetComponent : public Component {
     }
 
 #ifdef USE_TEXT_SENSOR
-    std::optional<FineOffsetState> get_last_state(FineOffsetTextSensorType type) {
-        auto [found, state] = this->store_.get_last_state(type);
-        return found ? std::make_optional(state) : std::nullopt;
+    std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
+        return this->store_.get_last_state(type);
     }
 #endif
 
