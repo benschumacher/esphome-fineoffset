@@ -230,14 +230,14 @@ void FineOffsetStore::record_state() {
     if (state.sensor_id != 0) {
         // Add to circular buffer (replaces std::deque)
         this->states_[this->states_head_] = state;
-        this->states_head_ = (this->states_head_ + 1) % MAX_STATES;
-        if (this->states_count_ < MAX_STATES) {
+        this->states_head_ = (this->states_head_ + 1) % config::MAX_RECENT_STATES;
+        if (this->states_count_ < config::MAX_RECENT_STATES) {
             this->states_count_++;
         }
 
         if (state.valid) {
             // Only store for registered sensors or if sensor discovery is enabled
-            if (state.sensor_id < MAX_SENSOR_IDS) {
+            if (state.sensor_id < config::MAX_SENSOR_IDS) {
                 this->sensor_states_[state.sensor_id] = state;
                 this->sensor_states_valid_[state.sensor_id] = true;
                 this->sensor_states_consumed_[state.sensor_id] = false;  // Mark as fresh data
@@ -267,7 +267,7 @@ std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffse
         case FINEOFFSET_TYPE_LAST:
             if (this->states_count_ > 0) {
                 // Get the most recent state from circular buffer
-                uint8_t last_index = (this->states_head_ + MAX_STATES - 1) % MAX_STATES;
+                uint8_t last_index = (this->states_head_ + config::MAX_RECENT_STATES - 1) % config::MAX_RECENT_STATES;
                 return {true, this->states_[last_index]};
             }
             break;
@@ -305,7 +305,7 @@ void FineOffsetComponent::setup() {
 }
 
 void FineOffsetComponent::schedule_diagnostic_log() {
-    this->set_timeout("diagnostic_log", 60000, [this]() {
+    this->set_timeout("diagnostic_log", config::DIAGNOSTIC_LOG_INTERVAL_MS, [this]() {
         ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
                  (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
                  this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,

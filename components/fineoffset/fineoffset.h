@@ -32,6 +32,13 @@ class TextSensor;
 }
 namespace fineoffset {
 
+// Configuration constants for memory allocation and timing
+namespace config {
+static constexpr size_t MAX_RECENT_STATES = 10;                // Circular buffer size for recent sensor readings
+static constexpr size_t MAX_SENSOR_IDS = 256;                  // Maximum number of sensor IDs (8-bit addressing)
+static constexpr uint32_t DIAGNOSTIC_LOG_INTERVAL_MS = 60000;  // Diagnostic logging interval
+}  // namespace config
+
 class FineOffsetComponent;
 
 #ifdef USE_TEXT_SENSOR
@@ -88,7 +95,7 @@ class FineOffsetStore {
     void record_state();
 
     std::pair<bool, const FineOffsetState> get_state_for_sensor_no(uint32_t sensor_id) {
-        if (sensor_id >= MAX_SENSOR_IDS || !this->sensor_states_valid_[sensor_id]) {
+        if (sensor_id >= config::MAX_SENSOR_IDS || !this->sensor_states_valid_[sensor_id]) {
             return {false, FineOffsetState()};
         }
         // Mark as consumed for selective clearing
@@ -104,7 +111,7 @@ class FineOffsetStore {
     // Manual reset for full cleanup (for testing/debugging)
     void reset() {
         // Selective clearing: only clear consumed data to maintain data freshness
-        for (size_t i = 0; i < MAX_SENSOR_IDS; ++i) {
+        for (size_t i = 0; i < config::MAX_SENSOR_IDS; ++i) {
             if (this->sensor_states_consumed_[i]) {
                 this->sensor_states_valid_[i] = false;
                 this->sensor_states_consumed_[i] = false;
@@ -149,16 +156,14 @@ class FineOffsetStore {
     bool has_pending_state_{false};
 
     // Fixed-size circular buffer for recent states (replaces std::deque)
-    static constexpr size_t MAX_STATES = 10;
-    FineOffsetState states_[MAX_STATES]{};
+    FineOffsetState states_[config::MAX_RECENT_STATES]{};
     uint8_t states_head_{0};
     uint8_t states_count_{0};
 
     // Fixed-size array for sensor states (replaces std::map) - 8-bit sensor IDs = max 256
-    static constexpr size_t MAX_SENSOR_IDS = 256;
-    FineOffsetState sensor_states_[MAX_SENSOR_IDS]{};
-    bool sensor_states_valid_[MAX_SENSOR_IDS]{};
-    bool sensor_states_consumed_[MAX_SENSOR_IDS]{};  // Track if data has been read
+    FineOffsetState sensor_states_[config::MAX_SENSOR_IDS]{};
+    bool sensor_states_valid_[config::MAX_SENSOR_IDS]{};
+    bool sensor_states_consumed_[config::MAX_SENSOR_IDS]{};  // Track if data has been read
 
     // Value semantics for last bad/unknown (replaces shared_ptr)
     FineOffsetState last_bad_{};
