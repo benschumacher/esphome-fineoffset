@@ -254,7 +254,11 @@ void FineOffsetStore::record_state() {
             this->last_bad_consumed_ = false;  // Mark as fresh data
         }
 
-        ESP_LOGD(TAG, "%s", state.str().c_str());
+        if (state.valid) {
+            ESP_LOGD(TAG, "%s", state.str().c_str());
+        } else {
+            ESP_LOGV(TAG, "%s", state.str().c_str());
+        }
     }
 
     this->have_sensor_data_.store(0);
@@ -321,7 +325,7 @@ void FineOffsetComponent::schedule_diagnostic_log() {
 
 void FineOffsetComponent::loop() {
     if (this->store_.ready()) {
-        ESP_LOGD(TAG, "ready, core=%d", xPortGetCoreID());
+        ESP_LOGV(TAG, "ready, core=%d", xPortGetCoreID());
         this->store_.record_state();
     }
 }
