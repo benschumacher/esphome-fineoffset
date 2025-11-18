@@ -293,19 +293,19 @@ void FineOffsetStore::record_state() {
 std::optional<ConsumedStateGuard<FineOffsetState>> FineOffsetStore::get_last_state(
     FineOffsetTextSensorType sensor_type) {
     switch (sensor_type) {
-        case FINEOFFSET_TYPE_LAST:
+        case FineOffsetTextSensorType::Last:
             if (this->states_count_ > 0) {
                 // Get the most recent state from circular buffer (no consumed tracking needed)
                 uint8_t last_index = (this->states_head_ + config::MAX_RECENT_STATES - 1) % config::MAX_RECENT_STATES;
                 return ConsumedStateGuard<FineOffsetState>(this->states_[last_index], nullptr);
             }
             break;
-        case FINEOFFSET_TYPE_LAST_BAD:
+        case FineOffsetTextSensorType::LastBad:
             if (this->has_last_bad_) {
                 return ConsumedStateGuard<FineOffsetState>(this->last_bad_, &this->last_bad_consumed_);
             }
             break;
-        case FINEOFFSET_TYPE_UNKNOWN:
+        case FineOffsetTextSensorType::Unknown:
             if (this->has_last_unknown_) {
                 return ConsumedStateGuard<FineOffsetState>(this->last_unknown_, &this->last_unknown_consumed_);
             }
