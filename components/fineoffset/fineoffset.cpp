@@ -81,6 +81,8 @@ std::string FineOffsetState::str() const {
 FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent) : parent_(parent), wh2_flags_{0}, packet_state_{0} {}
 
 void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
+    // NOTE: Static local variables limit this implementation to a single FineOffsetStore instance.
+    // Multiple instances would share these statics and interfere with each other.
     static unsigned long edgeTimeStamp[3] = {0};  // Timestamp of edges
     static bool skip = true;
 
@@ -113,7 +115,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     static byte bit_no = 0;
     static byte history = 0x01;
 
-    self->packet_state_.store(wh2_packet_state);
+    self->packet_state_.store(wh2_packet_state, std::memory_order_relaxed);
     switch (sampling_state) {
         case 0:  // waiting
 
@@ -188,51 +190,58 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
 
         if (wh2_accept_flag) {
             uint8_t crc = FineOffsetState::crc8ish(wh2_packet, 4);
-            self->cycles_++;
+            self->cycles_.fetch_add(1, std::memory_order_relaxed);
 
             if (crc == wh2_packet[4]) {
                 wh2_valid = true;
             } else {
-                self->bad_count_++;
+                self->bad_count_.fetch_add(1, std::memory_order_relaxed);
                 wh2_valid = false;
             }
 
             FineOffsetState state(wh2_packet);  // Direct value construction - no heap allocation
 
+            // Double-buffered ISR-safe write: write to ISR's buffer, then atomically signal completion
             // avoid change sensor data during update
-            if (wh2_valid == true && self->have_sensor_data_.load() == 0) {
-                self->state_obj_ = state;
-                self->has_pending_state_ = true;
-                self->have_sensor_data_.store(state.sensor_id);
-            } else if (!wh2_valid && self->have_sensor_data_.load() == 0) {
-                self->state_obj_ = state;
-                self->has_pending_state_ = true;
+            if (wh2_valid == true && self->have_sensor_data_.load(std::memory_order_relaxed) == 0) {
+                uint8_t buffer_idx = self->isr_buffer_index_.load(std::memory_order_relaxed);
+                self->state_buffers_[buffer_idx] = state;  // Safe: main thread uses other buffer
+                self->has_pending_state_.store(
+                    true, std::memory_order_release);  // Release: ensure state write completes first
+                self->have_sensor_data_.store(state.sensor_id, std::memory_order_release);
+            } else if (!wh2_valid && self->have_sensor_data_.load(std::memory_order_relaxed) == 0) {
+                uint8_t buffer_idx = self->isr_buffer_index_.load(std::memory_order_relaxed);
+                self->state_buffers_[buffer_idx] = state;  // Safe: main thread uses other buffer
+                self->has_pending_state_.store(
+                    true, std::memory_order_release);  // Release: ensure state write completes first
             }
 
             wh2_accept_flag = false;
-            self->accept_flag_.store(false);
+            self->accept_flag_.store(false, std::memory_order_relaxed);
         }
         wh2_flags = 0;
     }
 
-    self->wh2_flags_.store(wh2_flags);
+    self->wh2_flags_.store(wh2_flags, std::memory_order_relaxed);
     //--------------------------------------------------------
 }
 
-bool FineOffsetStore::accept() {
-    if (this->have_sensor_data_.load() != 0) {
-        return true;
-    }
-    return false;
-}
+bool FineOffsetStore::accept() { return this->have_sensor_data_.load(std::memory_order_relaxed) != 0; }
 
 void FineOffsetStore::record_state() {
-    if (!this->has_pending_state_) {
+    if (!this->has_pending_state_.load(std::memory_order_acquire)) {  // Acquire: see all ISR writes
         return;
     }
 
-    FineOffsetState state = this->state_obj_;
-    this->has_pending_state_ = false;
+    // Swap buffers atomically - ISR now writes to the buffer we just read from
+    uint8_t read_idx = this->isr_buffer_index_.load(std::memory_order_relaxed);
+    uint8_t new_isr_idx = 1 - read_idx;  // Toggle between 0 and 1
+    this->isr_buffer_index_.store(new_isr_idx, std::memory_order_relaxed);
+
+    // Now safe to read from old ISR buffer (ISR is writing to the other one)
+    FineOffsetState state = this->state_buffers_[read_idx];
+
+    this->has_pending_state_.store(false, std::memory_order_release);
 
     if (state.sensor_id != 0) {
         // Add to circular buffer (replaces std::deque)
@@ -269,8 +278,8 @@ void FineOffsetStore::record_state() {
         }
     }
 
-    this->have_sensor_data_.store(0);
-    this->wh2_flags_.store(0);
+    this->have_sensor_data_.store(0, std::memory_order_relaxed);
+    this->wh2_flags_.store(0, std::memory_order_relaxed);
 }
 
 #ifdef USE_TEXT_SENSOR
@@ -316,9 +325,12 @@ void FineOffsetComponent::setup() {
 void FineOffsetComponent::schedule_diagnostic_log() {
     this->set_timeout("diagnostic_log", config::DIAGNOSTIC_LOG_INTERVAL_MS, [this]() {
         ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
-                 (this->store_.accept_flag_.load() ? "true" : "false"), this->store_.wh2_flags_.load(),
-                 this->store_.have_sensor_data_.load(), this->store_.packet_state_.load(), this->store_.cycles_,
-                 this->store_.bad_count_);
+                 (this->store_.accept_flag_.load(std::memory_order_relaxed) ? "true" : "false"),
+                 this->store_.wh2_flags_.load(std::memory_order_relaxed),
+                 this->store_.have_sensor_data_.load(std::memory_order_relaxed),
+                 this->store_.packet_state_.load(std::memory_order_relaxed),
+                 this->store_.cycles_.load(std::memory_order_relaxed),
+                 this->store_.bad_count_.load(std::memory_order_relaxed));
 
         // Perform periodic cleanup of consumed sensor data (critical for data freshness)
         this->store_.periodic_cleanup();

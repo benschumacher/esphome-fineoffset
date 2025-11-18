@@ -119,7 +119,10 @@ class FineOffsetStore {
         this->pin_ = pin->to_isr();
     }
     bool accept();
-    bool ready() { return (this->have_sensor_data_.load() != 0 || this->has_pending_state_); }
+    bool ready() {
+        return (this->have_sensor_data_.load(std::memory_order_relaxed) != 0 ||
+                this->has_pending_state_.load(std::memory_order_relaxed));
+    }
     void record_state();
 
     std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint32_t sensor_id) {
@@ -173,14 +176,16 @@ class FineOffsetStore {
 
     std::atomic<byte> wh2_flags_{0};
     std::atomic<bool> accept_flag_{false};
-    volatile std::atomic<std::uint8_t> have_sensor_data_{0};
-    volatile uint32_t cycles_{0};
-    volatile uint32_t bad_count_{0};
+    std::atomic<uint8_t> have_sensor_data_{0};
+    std::atomic<uint32_t> cycles_{0};
+    std::atomic<uint32_t> bad_count_{0};
     std::atomic<byte> packet_state_;
 
-    // Memory-optimized: eliminate heap allocation and fragmentation
-    FineOffsetState state_obj_{};
-    bool has_pending_state_{false};
+    // Double-buffered state for ISR-safe communication (lock-free)
+    // ISR writes to state_buffers_[isr_buffer_index_], main thread reads from the other buffer
+    FineOffsetState state_buffers_[2]{};
+    std::atomic<uint8_t> isr_buffer_index_{0};  // Which buffer ISR writes to (0 or 1)
+    std::atomic<bool> has_pending_state_{false};
 
     // Fixed-size circular buffer for recent states (replaces std::deque)
     FineOffsetState states_[config::MAX_RECENT_STATES]{};
