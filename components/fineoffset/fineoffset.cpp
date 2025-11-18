@@ -30,6 +30,7 @@ FineOffsetState::FineOffsetState(byte packet[5]) {
     // equals the crc stored in the 5th
     if (this->sensor_id != 0) {
         this->valid = FineOffsetState::crc8ish(packet, 4) == packet[4];
+        this->plausible = this->valid && this->is_plausible();
     }
 }
 
@@ -46,7 +47,13 @@ std::string FineOffsetState::str() const {
     data += "% | temperature: ";
     data += temperture_buf;
     data += "°C | ";
-    data += (valid ? "OK " : "BAD");
+    if (valid && plausible) {
+        data += "OK";
+    } else if (valid && !plausible) {
+        data += "IMPLAUSIBLE";
+    } else {
+        data += "BAD";
+    }
 
     return data;
 }
@@ -235,8 +242,8 @@ void FineOffsetStore::record_state() {
             this->states_count_++;
         }
 
-        if (state.valid) {
-            // Only store for registered sensors or if sensor discovery is enabled
+        if (state.valid && state.plausible) {
+            // Only store plausible readings for sensor data
             if (state.sensor_id < config::MAX_SENSOR_IDS) {
                 this->sensor_states_[state.sensor_id] = state;
                 this->sensor_states_valid_[state.sensor_id] = true;
@@ -249,6 +256,7 @@ void FineOffsetStore::record_state() {
                 this->last_unknown_consumed_ = false;  // Mark as fresh data
             }
         } else {
+            // Treat CRC-valid but implausible readings as "bad" for debugging
             this->last_bad_ = state;
             this->has_last_bad_ = true;
             this->last_bad_consumed_ = false;  // Mark as fresh data
@@ -266,32 +274,29 @@ void FineOffsetStore::record_state() {
 }
 
 #ifdef USE_TEXT_SENSOR
-std::pair<bool, const FineOffsetState> FineOffsetStore::get_last_state(FineOffsetTextSensorType sensor_type) {
+std::optional<ConsumedStateGuard<FineOffsetState>> FineOffsetStore::get_last_state(
+    FineOffsetTextSensorType sensor_type) {
     switch (sensor_type) {
         case FINEOFFSET_TYPE_LAST:
             if (this->states_count_ > 0) {
-                // Get the most recent state from circular buffer
+                // Get the most recent state from circular buffer (no consumed tracking needed)
                 uint8_t last_index = (this->states_head_ + config::MAX_RECENT_STATES - 1) % config::MAX_RECENT_STATES;
-                return {true, this->states_[last_index]};
+                return ConsumedStateGuard<FineOffsetState>(this->states_[last_index], nullptr);
             }
             break;
         case FINEOFFSET_TYPE_LAST_BAD:
             if (this->has_last_bad_) {
-                // Mark as consumed for selective clearing
-                this->last_bad_consumed_ = true;
-                return {true, this->last_bad_};
+                return ConsumedStateGuard<FineOffsetState>(this->last_bad_, &this->last_bad_consumed_);
             }
             break;
         case FINEOFFSET_TYPE_UNKNOWN:
             if (this->has_last_unknown_) {
-                // Mark as consumed for selective clearing
-                this->last_unknown_consumed_ = true;
-                return {true, this->last_unknown_};
+                return ConsumedStateGuard<FineOffsetState>(this->last_unknown_, &this->last_unknown_consumed_);
             }
             break;
     }
 
-    return {false, FineOffsetState()};
+    return std::nullopt;
 }
 #endif
 

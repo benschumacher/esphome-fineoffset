@@ -20,9 +20,10 @@ void FineOffsetTextSensor::update() {
         return;
     }
 
-    auto state = this->parent_->get_last_state(this->sensor_type_);
-    if (state.has_value()) {
-        std::string state_str = state->str();
+    auto state_guard = this->parent_->get_last_state(this->sensor_type_);
+    if (state_guard.has_value()) {
+        const auto& state = state_guard->get();
+        std::string state_str = state.str();
         if (state_str != this->state) {
             this->publish_state(state_str);
         }
