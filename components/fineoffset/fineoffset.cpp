@@ -58,25 +58,32 @@ std::string FineOffsetState::str() const {
     return data;
 }
 
-//--------------------------------------------------------
-// 1 is indicated by 500uS pulse
-// wh2_accept from 2 = 400us to 3 = 600us
-#define IS_HI_PULSE(interval) (interval >= 250 && interval <= 750)
-// 0 is indicated by ~1500us pulse
-// wh2_accept from 7 = 1400us to 8 = 1600us
-#define IS_LOW_PULSE(interval) (interval >= 1200 && interval <= 1750)
-// worst case packet length
-// 6 bytes x 8 bits =48
-#define IDLE_HAS_TIMED_OUT(interval) (interval > 1199)
-// our expected pulse should arrive after 1ms
-// we'll wh2_accept it if it arrives after
-// 4 x 200us = 800us
-#define IDLE_PERIOD_DONE(interval) (interval >= 751)
+// WH2 signal timing and decoder constants
+namespace signal_timing {
+// Pulse timing thresholds (microseconds)
+// 1 is indicated by 500µS pulse (wh2_accept from 2=400µs to 3=600µs)
+inline constexpr uint32_t HI_PULSE_MIN_US = 250;
+inline constexpr uint32_t HI_PULSE_MAX_US = 750;
 
-// const auto GOT_PULSE = 0x01;
-// const auto LOGIC_HI = 0x02;
-#define GOT_PULSE 0x01
-#define LOGIC_HI 0x02
+// 0 is indicated by ~1500µs pulse (wh2_accept from 7=1400µs to 8=1600µs)
+inline constexpr uint32_t LOW_PULSE_MIN_US = 1200;
+inline constexpr uint32_t LOW_PULSE_MAX_US = 1750;
+
+// Idle period timeouts
+inline constexpr uint32_t IDLE_TIMEOUT_US = 1199;  // worst case packet length: 6 bytes x 8 bits = 48
+inline constexpr uint32_t IDLE_DONE_US = 751;      // wh2_accept after 4 x 200µs = 800µs
+
+// Type-safe pulse detection functions
+constexpr bool is_hi_pulse(uint32_t interval) { return interval >= HI_PULSE_MIN_US && interval <= HI_PULSE_MAX_US; }
+constexpr bool is_low_pulse(uint32_t interval) { return interval >= LOW_PULSE_MIN_US && interval <= LOW_PULSE_MAX_US; }
+constexpr bool idle_has_timed_out(uint32_t interval) { return interval > IDLE_TIMEOUT_US; }
+constexpr bool idle_period_done(uint32_t interval) { return interval >= IDLE_DONE_US; }
+}  // namespace signal_timing
+
+namespace decoder_flags {
+inline constexpr uint8_t GOT_PULSE = 0x01;
+inline constexpr uint8_t LOGIC_HI = 0x02;
+}  // namespace decoder_flags
 
 FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent) : parent_(parent), wh2_flags_{0}, packet_state_{0} {}
 
@@ -119,20 +126,20 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     switch (sampling_state) {
         case 0:  // waiting
 
-            if (IS_HI_PULSE(pulse)) {
-                wh2_flags = GOT_PULSE | LOGIC_HI;
+            if (signal_timing::is_hi_pulse(pulse)) {
+                wh2_flags = decoder_flags::GOT_PULSE | decoder_flags::LOGIC_HI;
                 sampling_state = 1;
-            } else if (IS_LOW_PULSE(pulse)) {
-                wh2_flags = GOT_PULSE;  // logic low
+            } else if (signal_timing::is_low_pulse(pulse)) {
+                wh2_flags = decoder_flags::GOT_PULSE;  // logic low
             } else {
                 sampling_state = 0;
             }
             break;
         case 1:  // observe 1ms of idle time
-            if (IDLE_HAS_TIMED_OUT(pulse)) {
+            if (signal_timing::idle_has_timed_out(pulse)) {
                 sampling_state = 0;
                 wh2_packet_state = 1;
-            } else if (IDLE_PERIOD_DONE(pulse)) {
+            } else if (signal_timing::idle_period_done(pulse)) {
                 sampling_state = 0;
             } else {
                 sampling_state = 0;
@@ -147,7 +154,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
             // shift history right and store new value
             history <<= 1;
             // store a 1 if required (right shift along will store a 0)
-            if (wh2_flags & LOGIC_HI) {
+            if (wh2_flags & decoder_flags::LOGIC_HI) {
                 history |= 0x01;
             }
 
@@ -164,12 +171,12 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
                 history = 0xFF;
             }
             wh2_accept_flag = false;
-            self->accept_flag_.store(false);
+            self->accept_flag_.store(false, std::memory_order_relaxed);
         }
         // acquire packet
         else if (wh2_packet_state == 2) {
             wh2_packet[packet_no] <<= 1;
-            if (wh2_flags & LOGIC_HI) {
+            if (wh2_flags & decoder_flags::LOGIC_HI) {
                 wh2_packet[packet_no] |= 0x01;
             }
             bit_no++;
