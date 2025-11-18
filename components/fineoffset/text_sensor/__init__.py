@@ -12,7 +12,7 @@ DEPENDENCIES = ["fineoffset"]
 FineOffsetTextSensor = fineoffset_ns.class_(
     "FineOffsetTextSensor", text_sensor.TextSensor, cg.PollingComponent
 )
-FineOffsetTextSensorType = fineoffset_ns.enum("FineOffsetTextSensorType")
+FineOffsetTextSensorType = fineoffset_ns.enum("FineOffsetTextSensorType", is_class=True)
 
 CONF_TYPE = "type"
 TYPES = {
