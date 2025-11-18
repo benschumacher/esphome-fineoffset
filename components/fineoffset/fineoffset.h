@@ -80,6 +80,7 @@ struct FineOffsetState {
     FineOffsetState(byte packet[5]);
 
     std::string str() const;
+    std::string debug_str() const;  // Detailed debug string with raw packet
     bool is_plausible() const {
         return humidity <= 100 && temperature >= -400 && temperature <= 800;  // -40.0°C to 80.0°C (in 0.1°C units)
     }
@@ -89,6 +90,7 @@ struct FineOffsetState {
     uint32_t humidity{0};
     bool valid{false};
     bool plausible{false};
+    byte raw_packet[5]{0, 0, 0, 0, 0};  // Store raw packet bytes for debugging
 
     static uint8_t crc8ish(const byte data[], uint8_t len) {
         uint8_t crc = 0;

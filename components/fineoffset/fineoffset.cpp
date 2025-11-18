@@ -19,6 +19,11 @@ namespace fineoffset {
 static const char* const TAG = "fineoffset";
 
 FineOffsetState::FineOffsetState(byte packet[5]) {
+    // Save raw packet for debugging
+    for (int i = 0; i < 5; i++) {
+        this->raw_packet[i] = packet[i];
+    }
+
     this->sensor_id = ((packet[0] & 0x0F) << 4) + ((packet[1] & 0xF0) >> 4);
     this->temperature = ((packet[1] & 0b00000111) << 8) + packet[2];
     this->humidity = packet[3];
@@ -53,6 +58,26 @@ std::string FineOffsetState::str() const {
         data += "IMPLAUSIBLE";
     } else {
         data += "BAD";
+    }
+
+    return data;
+}
+
+std::string FineOffsetState::debug_str() const {
+    std::string data = this->str();
+
+    // Append raw packet bytes in hex
+    char raw_buf[30];
+    snprintf(raw_buf, sizeof(raw_buf), " [RAW: %02X %02X %02X %02X %02X]",
+             raw_packet[0], raw_packet[1], raw_packet[2], raw_packet[3], raw_packet[4]);
+    data += raw_buf;
+
+    // Add CRC info
+    uint8_t calculated_crc = crc8ish(raw_packet, 4);
+    if (calculated_crc != raw_packet[4]) {
+        char crc_buf[40];
+        snprintf(crc_buf, sizeof(crc_buf), " CRC calc=%02X recv=%02X", calculated_crc, raw_packet[4]);
+        data += crc_buf;
     }
 
     return data;
@@ -219,6 +244,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
             } else if (!wh2_valid && self->have_sensor_data_.load(std::memory_order_relaxed) == 0) {
                 uint8_t buffer_idx = self->isr_buffer_index_.load(std::memory_order_relaxed);
                 self->state_buffers_[buffer_idx] = state;  // Safe: main thread uses other buffer
+                self->state_buffers_[buffer_idx].valid = false;  // Ensure marked invalid for debugging
                 self->has_pending_state_.store(
                     true, std::memory_order_release);  // Release: ensure state write completes first
             }
@@ -278,10 +304,11 @@ void FineOffsetStore::record_state() {
             this->last_bad_consumed_ = false;  // Mark as fresh data
         }
 
-        if (state.valid) {
+        if (state.valid && state.plausible) {
             ESP_LOGD(TAG, "%s", state.str().c_str());
         } else {
-            ESP_LOGV(TAG, "%s", state.str().c_str());
+            // Log invalid/implausible packets with detailed debug info
+            ESP_LOGD(TAG, "%s", state.debug_str().c_str());
         }
     }
 
