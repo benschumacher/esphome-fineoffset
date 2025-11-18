@@ -38,19 +38,19 @@ static void ICACHE_RAM_ATTR ext_int_1() {
     //--------------------------------------------------------
     // 1 is indicated by 500uS pulse
     // wh2_accept from 2 = 400us to 3 = 600us
-    #define IS_HI_PULSE(interval)(interval >= 250 && interval <= 750)
+#define IS_HI_PULSE(interval) (interval >= 250 && interval <= 750)
     // 0 is indicated by ~1500us pulse
     // wh2_accept from 7 = 1400us to 8 = 1600us
-    #define IS_LOW_PULSE(interval)(interval >= 1200 && interval <= 1750)
+#define IS_LOW_PULSE(interval) (interval >= 1200 && interval <= 1750)
     // worst case packet length
     // 6 bytes x 8 bits =48
-    #define IDLE_HAS_TIMED_OUT(interval)(interval > 1199)
+#define IDLE_HAS_TIMED_OUT(interval) (interval > 1199)
     // our expected pulse should arrive after 1ms
     // we'll wh2_accept it if it arrives after
     // 4 x 200us = 800us
-    #define IDLE_PERIOD_DONE(interval)(interval >= 751)
-    #define GOT_PULSE 0x01
-    #define LOGIC_HI 0x02
+#define IDLE_PERIOD_DONE(interval) (interval >= 751)
+#define GOT_PULSE 0x01
+#define LOGIC_HI 0x02
 
     static byte wh2_flags = 0x00;
     static bool wh2_accept_flag = false;
