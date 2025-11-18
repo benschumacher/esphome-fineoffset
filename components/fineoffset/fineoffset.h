@@ -66,7 +66,7 @@ template<typename T> class ConsumedStateGuard {
 class FineOffsetComponent;
 
 #ifdef USE_TEXT_SENSOR
-enum FineOffsetTextSensorType : uint8_t;
+enum class FineOffsetTextSensorType : uint8_t;
 #endif
 
 using byte = uint8_t;
