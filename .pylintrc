@@ -1,0 +1,17 @@
+[MASTER]
+ignore=venv,.venv,.esphome,build
+
+[MESSAGES CONTROL]
+# Disable invalid-name for module-level class references (ESPHome pattern)
+disable=
+    invalid-name,
+    too-few-public-methods,
+    missing-module-docstring,
+    missing-function-docstring
+
+[FORMAT]
+max-line-length=120
+
+[BASIC]
+# Allow class-like names at module level (ESPHome codegen pattern)
+const-rgx=(([A-Z_][A-Z0-9_]*)|(__.*__)|([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]*))$

@@ -5,3 +5,6 @@
 /secrets.yaml
 .vscode/
 *.pyc
+
+# Python virtual environment
+venv/
