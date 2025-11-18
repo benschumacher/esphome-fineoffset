@@ -3,11 +3,13 @@ ignore=venv,.venv,.esphome,build
 
 [MESSAGES CONTROL]
 # Disable invalid-name for module-level class references (ESPHome pattern)
+# Disable import-error since esphome module won't be available in lint environment
 disable=
     invalid-name,
     too-few-public-methods,
     missing-module-docstring,
-    missing-function-docstring
+    missing-function-docstring,
+    import-error
 
 [FORMAT]
 max-line-length=120
