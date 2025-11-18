@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # Lint code using pre-commit hooks
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Cache pre-commit hooks
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files
+
+  # Compile ESPHome configuration
+  esphome-build:
+    name: ESPHome Compile
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        esphome-version: ['stable', 'latest']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache ESPHome build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .esphome/cache
+            .esphome/build
+          key: esphome-${{ matrix.esphome-version }}-${{ hashFiles('example.yaml', 'components/**') }}
+          restore-keys: |
+            esphome-${{ matrix.esphome-version }}-
+
+      - name: Validate ESPHome configuration
+        run: |
+          docker run --rm \
+            -v "$PWD:/config" \
+            -v "$PWD/.esphome/cache:/cache" \
+            -v "$PWD/.esphome/build:/build" \
+            esphome/esphome:${{ matrix.esphome-version }} config example.yaml
+
+      - name: Compile ESPHome configuration
+        run: |
+          docker run --rm \
+            -v "$PWD:/config" \
+            -v "$PWD/.esphome/cache:/cache" \
+            -v "$PWD/.esphome/build:/build" \
+            esphome/esphome:${{ matrix.esphome-version }} compile example.yaml
+
+  # Combined status check
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [lint, esphome-build]
+    if: always()
+    steps:
+      - name: Check build status
+        run: |
+          if [[ "${{ needs.lint.result }}" != "success" ]] || [[ "${{ needs.esphome-build.result }}" != "success" ]]; then
+            echo "CI failed"
+            exit 1
+          fi
+          echo "CI passed"
