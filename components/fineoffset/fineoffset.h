@@ -36,6 +36,8 @@ static constexpr uint32_t DIAGNOSTIC_LOG_INTERVAL_MS = 60000;  // Diagnostic log
 }  // namespace config
 
 // RAII helper for automatic consumed state tracking
+// Note: Stores reference to data, so original data must outlive the guard.
+// This is safe because we only reference persistent state arrays (sensor_states_, states_, etc.)
 template<typename T> class ConsumedStateGuard {
    public:
     ConsumedStateGuard(const T& data, bool* consumed_flag) : data_(data), consumed_flag_(consumed_flag) {}
@@ -47,15 +49,14 @@ template<typename T> class ConsumedStateGuard {
     // Move-only semantics
     ConsumedStateGuard(const ConsumedStateGuard&) = delete;
     ConsumedStateGuard& operator=(const ConsumedStateGuard&) = delete;
-    ConsumedStateGuard(ConsumedStateGuard&& other) noexcept
-        : data_(std::move(other.data_)), consumed_flag_(other.consumed_flag_) {
+    ConsumedStateGuard(ConsumedStateGuard&& other) noexcept : data_(other.data_), consumed_flag_(other.consumed_flag_) {
         other.consumed_flag_ = nullptr;
     }
 
     const T& get() const { return data_; }
 
    private:
-    T data_;
+    const T& data_;  // Reference instead of copy - saves 52 bytes per call
     bool* consumed_flag_;
 };
 
@@ -81,12 +82,15 @@ struct FineOffsetState {
         return humidity <= 100 && temperature >= -400 && temperature <= 800;  // -40.0°C to 80.0°C (in 0.1°C units)
     }
 
-    uint32_t sensor_id{0};
-    int32_t temperature{0};
-    uint32_t humidity{0};
-    bool valid{false};
-    bool plausible{false};
-    byte raw_packet[5]{0, 0, 0, 0, 0};  // Store raw packet bytes for debugging
+    // Optimized memory layout: 16 bytes total (down from ~52 bytes)
+    // Sensor ID is 8-bit (0-255), temperature range -400 to 800 fits in int16_t
+    uint8_t sensor_id{0};               // 1 byte: sensor ID (0-255)
+    int16_t temperature{0};             // 2 bytes: temperature in 0.1°C units (-40.0°C to 80.0°C)
+    uint8_t humidity{0};                // 1 byte: humidity 0-100%
+    bool valid{false};                  // 1 byte: CRC validation result
+    bool plausible{false};              // 1 byte: plausibility check result
+    byte raw_packet[5]{0, 0, 0, 0, 0};  // 5 bytes: raw packet for debugging
+    // Total: 11 bytes + 5 bytes padding = 16 bytes (with alignment)
 
     static uint8_t crc8ish(const byte data[], uint8_t len) {
         uint8_t crc = 0;
@@ -106,6 +110,10 @@ struct FineOffsetState {
     }
 };
 
+// FineOffsetStore handles ISR-based signal processing and state management
+// LIMITATION: Due to static variables in ISR, only ONE instance is supported.
+// Multiple sensors on different IDs work fine, but multiple receivers (pins) do NOT.
+// This limitation is documented in the ISR implementation.
 class FineOffsetStore {
    public:
     FineOffsetStore(FineOffsetComponent* parent);
