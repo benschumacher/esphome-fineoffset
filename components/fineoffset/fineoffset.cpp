@@ -68,8 +68,8 @@ std::string FineOffsetState::debug_str() const {
 
     // Append raw packet bytes in hex
     char raw_buf[30];
-    snprintf(raw_buf, sizeof(raw_buf), " [RAW: %02X %02X %02X %02X %02X]",
-             raw_packet[0], raw_packet[1], raw_packet[2], raw_packet[3], raw_packet[4]);
+    snprintf(raw_buf, sizeof(raw_buf), " [RAW: %02X %02X %02X %02X %02X]", raw_packet[0], raw_packet[1], raw_packet[2],
+             raw_packet[3], raw_packet[4]);
     data += raw_buf;
 
     // Add CRC info
@@ -213,11 +213,11 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
                 // start the sampling process from scratch
                 wh2_packet_state = 1;
                 wh2_accept_flag = true;
-                self->accept_flag_.store(true);
+                self->accept_flag_.store(true, std::memory_order_relaxed);
             }
         } else {
             wh2_accept_flag = false;
-            self->accept_flag_.store(false);
+            self->accept_flag_.store(false, std::memory_order_relaxed);
         }
 
         if (wh2_accept_flag) {
@@ -243,7 +243,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
                 self->have_sensor_data_.store(state.sensor_id, std::memory_order_release);
             } else if (!wh2_valid && self->have_sensor_data_.load(std::memory_order_relaxed) == 0) {
                 uint8_t buffer_idx = self->isr_buffer_index_.load(std::memory_order_relaxed);
-                self->state_buffers_[buffer_idx] = state;  // Safe: main thread uses other buffer
+                self->state_buffers_[buffer_idx] = state;        // Safe: main thread uses other buffer
                 self->state_buffers_[buffer_idx].valid = false;  // Ensure marked invalid for debugging
                 self->has_pending_state_.store(
                     true, std::memory_order_release);  // Release: ensure state write completes first

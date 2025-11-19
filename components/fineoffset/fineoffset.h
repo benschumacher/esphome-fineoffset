@@ -3,12 +3,8 @@
 #include <esp_types.h>
 
 #include <atomic>
-#include <deque>
-#include <map>
-#include <memory>
 #include <optional>
 #include <set>
-#include <vector>
 
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
@@ -81,7 +77,7 @@ struct FineOffsetState {
 
     std::string str() const;
     std::string debug_str() const;  // Detailed debug string with raw packet
-    bool is_plausible() const {
+    [[nodiscard]] constexpr bool is_plausible() const {
         return humidity <= 100 && temperature >= -400 && temperature <= 800;  // -40.0°C to 80.0°C (in 0.1°C units)
     }
 
@@ -120,14 +116,14 @@ class FineOffsetStore {
         pin->attach_interrupt(&FineOffsetStore::intr_cb, this, gpio::INTERRUPT_ANY_EDGE);
         this->pin_ = pin->to_isr();
     }
-    bool accept();
-    bool ready() {
+    [[nodiscard]] bool accept();
+    [[nodiscard]] bool ready() {
         return (this->have_sensor_data_.load(std::memory_order_relaxed) != 0 ||
                 this->has_pending_state_.load(std::memory_order_relaxed));
     }
     void record_state();
 
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint32_t sensor_id) {
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint32_t sensor_id) {
         if (sensor_id >= config::MAX_SENSOR_IDS || !this->sensor_states_valid_[sensor_id]) {
             return std::nullopt;
         }
@@ -135,7 +131,7 @@ class FineOffsetStore {
                                                    &this->sensor_states_consumed_[sensor_id]);
     }
 #ifdef USE_TEXT_SENSOR
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type);
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type);
 #endif
     // Periodic cleanup of consumed data (called every 60s for data freshness)
     void periodic_cleanup() { this->reset(); }
@@ -226,19 +222,19 @@ class FineOffsetComponent : public Component {
     void dump_config() override;
 
     // Public API for sensors to pull data
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint8_t sensor_no) {
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint8_t sensor_no) {
         return this->store_.get_state_for_sensor_no(sensor_no);
     }
 
     // Register known sensor IDs for unknown sensor detection
     void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.insert(sensor_no); }
 
-    bool is_unknown_sensor(uint8_t sensor_no) const {
+    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const {
         return this->known_sensor_ids_.find(sensor_no) == this->known_sensor_ids_.end();
     }
 
 #ifdef USE_TEXT_SENSOR
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
         return this->store_.get_last_state(type);
     }
 #endif
