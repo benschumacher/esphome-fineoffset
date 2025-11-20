@@ -7,10 +7,10 @@
 namespace esphome {
 namespace fineoffset {
 
-enum FineOffsetTextSensorType : uint8_t {
-    FINEOFFSET_TYPE_LAST,
-    FINEOFFSET_TYPE_LAST_BAD,
-    FINEOFFSET_TYPE_UNKNOWN,
+enum class FineOffsetTextSensorType : uint8_t {
+    Last,
+    LastBad,
+    Unknown,
 };
 
 class FineOffsetTextSensor : public text_sensor::TextSensor, public PollingComponent {

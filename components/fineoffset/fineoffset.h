@@ -3,12 +3,8 @@
 #include <esp_types.h>
 
 #include <atomic>
-#include <deque>
-#include <map>
-#include <memory>
 #include <optional>
 #include <set>
-#include <vector>
 
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
@@ -40,6 +36,8 @@ static constexpr uint32_t DIAGNOSTIC_LOG_INTERVAL_MS = 60000;  // Diagnostic log
 }  // namespace config
 
 // RAII helper for automatic consumed state tracking
+// Note: Stores reference to data, so original data must outlive the guard.
+// This is safe because we only reference persistent state arrays (sensor_states_, states_, etc.)
 template<typename T> class ConsumedStateGuard {
    public:
     ConsumedStateGuard(const T& data, bool* consumed_flag) : data_(data), consumed_flag_(consumed_flag) {}
@@ -51,22 +49,21 @@ template<typename T> class ConsumedStateGuard {
     // Move-only semantics
     ConsumedStateGuard(const ConsumedStateGuard&) = delete;
     ConsumedStateGuard& operator=(const ConsumedStateGuard&) = delete;
-    ConsumedStateGuard(ConsumedStateGuard&& other) noexcept
-        : data_(std::move(other.data_)), consumed_flag_(other.consumed_flag_) {
+    ConsumedStateGuard(ConsumedStateGuard&& other) noexcept : data_(other.data_), consumed_flag_(other.consumed_flag_) {
         other.consumed_flag_ = nullptr;
     }
 
     const T& get() const { return data_; }
 
    private:
-    T data_;
+    const T& data_;  // Reference instead of copy - saves 52 bytes per call
     bool* consumed_flag_;
 };
 
 class FineOffsetComponent;
 
 #ifdef USE_TEXT_SENSOR
-enum FineOffsetTextSensorType : uint8_t;
+enum class FineOffsetTextSensorType : uint8_t;
 #endif
 
 using byte = uint8_t;
@@ -80,15 +77,20 @@ struct FineOffsetState {
     FineOffsetState(byte packet[5]);
 
     std::string str() const;
-    bool is_plausible() const {
+    std::string debug_str() const;  // Detailed debug string with raw packet
+    [[nodiscard]] constexpr bool is_plausible() const {
         return humidity <= 100 && temperature >= -400 && temperature <= 800;  // -40.0°C to 80.0°C (in 0.1°C units)
     }
 
-    uint32_t sensor_id{0};
-    int32_t temperature{0};
-    uint32_t humidity{0};
-    bool valid{false};
-    bool plausible{false};
+    // Optimized memory layout: 16 bytes total (down from ~52 bytes)
+    // Sensor ID is 8-bit (0-255), temperature range -400 to 800 fits in int16_t
+    uint8_t sensor_id{0};               // 1 byte: sensor ID (0-255)
+    int16_t temperature{0};             // 2 bytes: temperature in 0.1°C units (-40.0°C to 80.0°C)
+    uint8_t humidity{0};                // 1 byte: humidity 0-100%
+    bool valid{false};                  // 1 byte: CRC validation result
+    bool plausible{false};              // 1 byte: plausibility check result
+    byte raw_packet[5]{0, 0, 0, 0, 0};  // 5 bytes: raw packet for debugging
+    // Total: 11 bytes + 5 bytes padding = 16 bytes (with alignment)
 
     static uint8_t crc8ish(const byte data[], uint8_t len) {
         uint8_t crc = 0;
@@ -108,6 +110,10 @@ struct FineOffsetState {
     }
 };
 
+// FineOffsetStore handles ISR-based signal processing and state management
+// LIMITATION: Due to static variables in ISR, only ONE instance is supported.
+// Multiple sensors on different IDs work fine, but multiple receivers (pins) do NOT.
+// This limitation is documented in the ISR implementation.
 class FineOffsetStore {
    public:
     FineOffsetStore(FineOffsetComponent* parent);
@@ -118,11 +124,14 @@ class FineOffsetStore {
         pin->attach_interrupt(&FineOffsetStore::intr_cb, this, gpio::INTERRUPT_ANY_EDGE);
         this->pin_ = pin->to_isr();
     }
-    bool accept();
-    bool ready() { return (this->have_sensor_data_.load() != 0 || this->has_pending_state_); }
+    [[nodiscard]] bool accept();
+    [[nodiscard]] bool ready() {
+        return (this->have_sensor_data_.load(std::memory_order_relaxed) != 0 ||
+                this->has_pending_state_.load(std::memory_order_relaxed));
+    }
     void record_state();
 
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint32_t sensor_id) {
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint32_t sensor_id) {
         if (sensor_id >= config::MAX_SENSOR_IDS || !this->sensor_states_valid_[sensor_id]) {
             return std::nullopt;
         }
@@ -130,7 +139,7 @@ class FineOffsetStore {
                                                    &this->sensor_states_consumed_[sensor_id]);
     }
 #ifdef USE_TEXT_SENSOR
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type);
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type);
 #endif
     // Periodic cleanup of consumed data (called every 60s for data freshness)
     void periodic_cleanup() { this->reset(); }
@@ -173,14 +182,16 @@ class FineOffsetStore {
 
     std::atomic<byte> wh2_flags_{0};
     std::atomic<bool> accept_flag_{false};
-    volatile std::atomic<std::uint8_t> have_sensor_data_{0};
-    volatile uint32_t cycles_{0};
-    volatile uint32_t bad_count_{0};
+    std::atomic<uint8_t> have_sensor_data_{0};
+    std::atomic<uint32_t> cycles_{0};
+    std::atomic<uint32_t> bad_count_{0};
     std::atomic<byte> packet_state_;
 
-    // Memory-optimized: eliminate heap allocation and fragmentation
-    FineOffsetState state_obj_{};
-    bool has_pending_state_{false};
+    // Double-buffered state for ISR-safe communication (lock-free)
+    // ISR writes to state_buffers_[isr_buffer_index_], main thread reads from the other buffer
+    FineOffsetState state_buffers_[2]{};
+    std::atomic<uint8_t> isr_buffer_index_{0};  // Which buffer ISR writes to (0 or 1)
+    std::atomic<bool> has_pending_state_{false};
 
     // Fixed-size circular buffer for recent states (replaces std::deque)
     FineOffsetState states_[config::MAX_RECENT_STATES]{};
@@ -219,19 +230,19 @@ class FineOffsetComponent : public Component {
     void dump_config() override;
 
     // Public API for sensors to pull data
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint8_t sensor_no) {
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_state_for_sensor_no(uint8_t sensor_no) {
         return this->store_.get_state_for_sensor_no(sensor_no);
     }
 
     // Register known sensor IDs for unknown sensor detection
     void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.insert(sensor_no); }
 
-    bool is_unknown_sensor(uint8_t sensor_no) const {
+    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const {
         return this->known_sensor_ids_.find(sensor_no) == this->known_sensor_ids_.end();
     }
 
 #ifdef USE_TEXT_SENSOR
-    std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
+    [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
         return this->store_.get_last_state(type);
     }
 #endif
