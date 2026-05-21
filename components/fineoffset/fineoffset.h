@@ -3,6 +3,7 @@
 #include <esp_types.h>
 
 #include <atomic>
+#include <bitset>
 #include <optional>
 
 #include "esphome/core/component.h"
@@ -238,9 +239,9 @@ class FineOffsetComponent : public Component {
     }
 
     // Register known sensor IDs for unknown sensor detection
-    void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_[sensor_no] = true; }
+    void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.set(sensor_no); }
 
-    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const { return !this->known_sensor_ids_[sensor_no]; }
+    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const { return !this->known_sensor_ids_.test(sensor_no); }
 
 #ifdef USE_TEXT_SENSOR
     [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
@@ -252,8 +253,8 @@ class FineOffsetComponent : public Component {
     friend class FineOffsetStore;
     FineOffsetStore store_;
     InternalGPIOPin* pin_;
-    // Fixed-size lookup table (replaces std::set<uint8_t>) - 8-bit IDs = max 256 entries
-    bool known_sensor_ids_[config::MAX_SENSOR_IDS]{};
+    // Bitset replaces std::set<uint8_t>: 32 bytes BSS, O(1), no heap
+    std::bitset<config::MAX_SENSOR_IDS> known_sensor_ids_{};
 
     void schedule_diagnostic_log();
 };
