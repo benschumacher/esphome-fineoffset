@@ -10,6 +10,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Python Formatting**: Python code uses black, ruff, flake8, and pylint via pre-commit hooks
 - **Environment Setup**: Use `script/run-in-env.sh` to run commands in the appropriate virtual environment
 
+#### Coding Standards Resources
+- **C++ Style Guide**: Check `.clang-format` file for exact formatting rules before writing code
+- **Pre-commit Configuration**: See `.pre-commit-config.yaml` for all enabled linting tools and their settings
+- **ISR Code Requirements**: Use `IRAM_ATTR` for interrupt service routines, avoid heap allocation in ISR context
+- **ESPHome Conventions**: Follow ESPHome component patterns for setup(), loop(), dump_config() methods
+
 ### Testing
 - **Example Configuration**: Test changes using `example.yaml` which demonstrates the component usage
 - **ESPHome Compilation**: Validate with `esphome compile example.yaml`
