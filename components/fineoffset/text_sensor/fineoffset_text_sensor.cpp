@@ -22,7 +22,7 @@ void FineOffsetTextSensor::update() {
 
     auto state_guard = this->parent_->get_last_state(this->sensor_type_);
     if (state_guard.has_value()) {
-        const auto &state = state_guard->get();
+        const auto& state = state_guard->get();
         char state_buf[FineOffsetState::STR_BUF_SIZE];
         state.str(state_buf, sizeof(state_buf));
         if (this->state != state_buf) {

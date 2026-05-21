@@ -39,13 +39,13 @@ FineOffsetState::FineOffsetState(byte packet[5]) {
     }
 }
 
-void FineOffsetState::str(char *buf, size_t len) const {
-    const char *status = valid ? (plausible ? "OK" : "IMPLAUSIBLE") : "BAD";
+void FineOffsetState::str(char* buf, size_t len) const {
+    const char* status = valid ? (plausible ? "OK" : "IMPLAUSIBLE") : "BAD";
     snprintf(buf, len, "| Sensor ID:  %u | humidity: %u%% | temperature: %.1f\xC2\xB0C | %s", sensor_id, humidity,
              temperature * 0.1f, status);
 }
 
-void FineOffsetState::debug_str(char *buf, size_t len) const {
+void FineOffsetState::debug_str(char* buf, size_t len) const {
     this->str(buf, len);
     size_t used = strlen(buf);
     uint8_t calculated_crc = crc8ish(raw_packet, 4);

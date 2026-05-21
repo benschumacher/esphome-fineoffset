@@ -80,8 +80,8 @@ struct FineOffsetState {
     static constexpr size_t STR_BUF_SIZE = 96;
     static constexpr size_t DEBUG_STR_BUF_SIZE = 160;
 
-    void str(char *buf, size_t len) const;
-    void debug_str(char *buf, size_t len) const;  // Detailed debug string with raw packet
+    void str(char* buf, size_t len) const;
+    void debug_str(char* buf, size_t len) const;  // Detailed debug string with raw packet
     [[nodiscard]] constexpr bool is_plausible() const {
         return humidity <= 100 && temperature >= -400 && temperature <= 800;  // -40.0°C to 80.0°C (in 0.1°C units)
     }
