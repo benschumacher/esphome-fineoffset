@@ -4,7 +4,7 @@
 namespace esphome {
 namespace fineoffset {
 
-static const char* TAG = "fineoffset.text_sensor";
+static const char* const TAG = "fineoffset.text_sensor";
 
 void FineOffsetTextSensor::setup() { ESP_LOGCONFIG(TAG, "Setting up FineOffset Text Sensor..."); }
 
@@ -22,10 +22,11 @@ void FineOffsetTextSensor::update() {
 
     auto state_guard = this->parent_->get_last_state(this->sensor_type_);
     if (state_guard.has_value()) {
-        const auto& state = state_guard->get();
-        std::string state_str = state.str();
-        if (state_str != this->state) {
-            this->publish_state(state_str);
+        const auto &state = state_guard->get();
+        char state_buf[FineOffsetState::STR_BUF_SIZE];
+        state.str(state_buf, sizeof(state_buf));
+        if (this->state != state_buf) {
+            this->publish_state(state_buf);
         }
     }
 }

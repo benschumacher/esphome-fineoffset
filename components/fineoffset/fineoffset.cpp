@@ -39,48 +39,23 @@ FineOffsetState::FineOffsetState(byte packet[5]) {
     }
 }
 
-std::string FineOffsetState::str() const {
-    std::string data;
-
-    char temperture_buf[7] = {0};  // 7 bytes is enough for -100.0 with a '\0'
-    snprintf(temperture_buf, sizeof(temperture_buf), "%.1f", (temperature * 0.1f));
-    data.clear();
-    data += "| Sensor ID:  ";
-    data += to_string(sensor_id);
-    data += " | humidity: ";
-    data += to_string(humidity);
-    data += "% | temperature: ";
-    data += temperture_buf;
-    data += "°C | ";
-    if (valid && plausible) {
-        data += "OK";
-    } else if (valid && !plausible) {
-        data += "IMPLAUSIBLE";
-    } else {
-        data += "BAD";
-    }
-
-    return data;
+void FineOffsetState::str(char *buf, size_t len) const {
+    const char *status = valid ? (plausible ? "OK" : "IMPLAUSIBLE") : "BAD";
+    snprintf(buf, len, "| Sensor ID:  %u | humidity: %u%% | temperature: %.1f\xC2\xB0C | %s", sensor_id, humidity,
+             temperature * 0.1f, status);
 }
 
-std::string FineOffsetState::debug_str() const {
-    std::string data = this->str();
-
-    // Append raw packet bytes in hex
-    char raw_buf[30];
-    snprintf(raw_buf, sizeof(raw_buf), " [RAW: %02X %02X %02X %02X %02X]", raw_packet[0], raw_packet[1], raw_packet[2],
-             raw_packet[3], raw_packet[4]);
-    data += raw_buf;
-
-    // Add CRC info
+void FineOffsetState::debug_str(char *buf, size_t len) const {
+    this->str(buf, len);
+    size_t used = strlen(buf);
     uint8_t calculated_crc = crc8ish(raw_packet, 4);
     if (calculated_crc != raw_packet[4]) {
-        char crc_buf[40];
-        snprintf(crc_buf, sizeof(crc_buf), " CRC calc=%02X recv=%02X", calculated_crc, raw_packet[4]);
-        data += crc_buf;
+        snprintf(buf + used, len - used, " [RAW: %02X %02X %02X %02X %02X] CRC calc=%02X recv=%02X", raw_packet[0],
+                 raw_packet[1], raw_packet[2], raw_packet[3], raw_packet[4], calculated_crc, raw_packet[4]);
+    } else {
+        snprintf(buf + used, len - used, " [RAW: %02X %02X %02X %02X %02X]", raw_packet[0], raw_packet[1],
+                 raw_packet[2], raw_packet[3], raw_packet[4]);
     }
-
-    return data;
 }
 
 // WH2 signal timing and decoder constants
@@ -115,7 +90,7 @@ FineOffsetStore::FineOffsetStore(FineOffsetComponent* parent) : parent_(parent),
 void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
     // NOTE: Static local variables limit this implementation to a single FineOffsetStore instance.
     // Multiple instances would share these statics and interfere with each other.
-    static unsigned long edgeTimeStamp[3] = {0};  // Timestamp of edges
+    static uint32_t edgeTimeStamp[3] = {0};  // Timestamp of edges (micros() returns uint32_t)
     static bool skip = true;
 
     // Filter out too short pulses. This method works as a low pass filter.  (borroved from new remote reciever)
@@ -134,7 +109,7 @@ void IRAM_ATTR FineOffsetStore::intr_cb(FineOffsetStore* self) {
         return;
     }
 
-    unsigned int pulse = edgeTimeStamp[1] - edgeTimeStamp[0];
+    uint32_t pulse = edgeTimeStamp[1] - edgeTimeStamp[0];
     edgeTimeStamp[0] = edgeTimeStamp[1];
 
     static byte wh2_flags = 0x00;
@@ -305,10 +280,13 @@ void FineOffsetStore::record_state() {
         }
 
         if (state.valid && state.plausible) {
-            ESP_LOGD(TAG, "%s", state.str().c_str());
+            char log_buf[FineOffsetState::STR_BUF_SIZE];
+            state.str(log_buf, sizeof(log_buf));
+            ESP_LOGD(TAG, "%s", log_buf);
         } else {
-            // Log invalid/implausible packets with detailed debug info
-            ESP_LOGD(TAG, "%s", state.debug_str().c_str());
+            char log_buf[FineOffsetState::DEBUG_STR_BUF_SIZE];
+            state.debug_str(log_buf, sizeof(log_buf));
+            ESP_LOGD(TAG, "%s", log_buf);
         }
     }
 

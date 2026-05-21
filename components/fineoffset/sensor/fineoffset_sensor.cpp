@@ -4,7 +4,7 @@
 namespace esphome {
 namespace fineoffset {
 
-static const char* TAG = "fineoffset.sensor";
+static const char* const TAG = "fineoffset.sensor";
 
 void FineOffsetSensor::setup() { ESP_LOGCONFIG(TAG, "Setting up FineOffset Sensor..."); }
 
