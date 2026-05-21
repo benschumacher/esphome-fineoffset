@@ -3,8 +3,8 @@
 #include <esp_types.h>
 
 #include <atomic>
+#include <bitset>
 #include <optional>
-#include <set>
 
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
@@ -76,8 +76,12 @@ struct FineOffsetState {
     FineOffsetState() = default;
     FineOffsetState(byte packet[5]);
 
-    std::string str() const;
-    std::string debug_str() const;  // Detailed debug string with raw packet
+    // Minimum buffer sizes for str() and debug_str()
+    static constexpr size_t STR_BUF_SIZE = 96;
+    static constexpr size_t DEBUG_STR_BUF_SIZE = 160;
+
+    void str(char* buf, size_t len) const;
+    void debug_str(char* buf, size_t len) const;  // Detailed debug string with raw packet
     [[nodiscard]] constexpr bool is_plausible() const {
         return humidity <= 100 && temperature >= -400 && temperature <= 800;  // -40.0°C to 80.0°C (in 0.1°C units)
     }
@@ -235,11 +239,9 @@ class FineOffsetComponent : public Component {
     }
 
     // Register known sensor IDs for unknown sensor detection
-    void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.insert(sensor_no); }
+    void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.set(sensor_no); }
 
-    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const {
-        return this->known_sensor_ids_.find(sensor_no) == this->known_sensor_ids_.end();
-    }
+    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const { return !this->known_sensor_ids_.test(sensor_no); }
 
 #ifdef USE_TEXT_SENSOR
     [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
@@ -251,7 +253,8 @@ class FineOffsetComponent : public Component {
     friend class FineOffsetStore;
     FineOffsetStore store_;
     InternalGPIOPin* pin_;
-    std::set<uint8_t> known_sensor_ids_;
+    // Bitset replaces std::set<uint8_t>: 32 bytes BSS, O(1), no heap
+    std::bitset<config::MAX_SENSOR_IDS> known_sensor_ids_{};
 
     void schedule_diagnostic_log();
 };
