@@ -41,7 +41,7 @@ FineOffsetState::FineOffsetState(byte packet[5]) {
 
 void FineOffsetState::str(char* buf, size_t len) const {
     const char* status = valid ? (plausible ? "OK" : "IMPLAUSIBLE") : "BAD";
-    snprintf(buf, len, "| Sensor ID:  %u | humidity: %u%% | temperature: %.1f\xC2\xB0C | %s", sensor_id, humidity,
+    snprintf(buf, len, "| Sensor ID:  %u | humidity: %u%% | temperature: %.1f | %s", sensor_id, humidity,
              temperature * 0.1f, status);
 }
 
