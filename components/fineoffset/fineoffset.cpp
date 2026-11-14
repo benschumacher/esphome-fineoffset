@@ -262,12 +262,24 @@ void FineOffsetStore::record_state() {
         if (state.valid && state.plausible) {
             // Only store plausible readings for sensor data
             if (state.sensor_id < config::MAX_SENSOR_IDS) {
+                const uint32_t now = millis();
+                this->last_seen_ms_[state.sensor_id] = now;
+                this->seen_ids_.set(state.sensor_id);
                 this->sensor_states_[state.sensor_id] = state;
                 this->sensor_states_valid_[state.sensor_id] = true;
                 this->sensor_states_consumed_[state.sensor_id] = false;  // Mark as fresh data
             }
 
             if (this->parent_->is_unknown_sensor(state.sensor_id)) {
+                if (state.sensor_id == this->latest_unknown_id_) {
+                    if (this->latest_unknown_count_ < UINT8_MAX)
+                        this->latest_unknown_count_++;
+                } else {
+                    this->latest_unknown_id_ = state.sensor_id;
+                    this->latest_unknown_count_ = 1;
+                }
+                this->latest_unknown_ms_ = millis();
+
                 this->last_unknown_ = state;
                 this->has_last_unknown_ = true;
                 this->last_unknown_consumed_ = false;  // Mark as fresh data
