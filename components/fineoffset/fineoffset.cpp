@@ -271,6 +271,12 @@ void FineOffsetStore::record_state() {
                 this->last_unknown_ = state;
                 this->has_last_unknown_ = true;
                 this->last_unknown_consumed_ = false;  // Mark as fresh data
+
+                if (!this->announced_unknown_ids_.test(state.sensor_id)) {
+                    this->announced_unknown_ids_.set(state.sensor_id);
+                    ESP_LOGI(TAG, "New unknown sensor ID %u (%.1f°C, %u%%) - set sensor_no to adopt it",
+                             state.sensor_id, state.temperature * 0.1f, state.humidity);
+                }
             }
         } else {
             // Treat CRC-valid but implausible readings as "bad" for debugging

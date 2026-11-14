@@ -215,6 +215,9 @@ class FineOffsetStore {
     FineOffsetState last_unknown_{};
     bool has_last_unknown_{false};
     bool last_unknown_consumed_{true};  // Start as consumed
+
+    // Unknown IDs already announced at INFO level (once per ID per boot, so a neighbor's sensor doesn't spam)
+    std::bitset<config::MAX_SENSOR_IDS> announced_unknown_ids_{};
 };
 
 #ifdef USE_SENSOR
@@ -240,6 +243,8 @@ class FineOffsetComponent : public Component {
 
     // Register known sensor IDs for unknown sensor detection
     void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.set(sensor_no); }
+    // Used when a sensor's ID is changed at runtime (see FineOffsetSensor::apply_sensor_no)
+    void unregister_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.reset(sensor_no); }
 
     [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const { return !this->known_sensor_ids_.test(sensor_no); }
 

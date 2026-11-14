@@ -2,12 +2,14 @@
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor
+from esphome.components import number, sensor
 from esphome.const import (
     DEVICE_CLASS_TEMPERATURE,
     DEVICE_CLASS_HUMIDITY,
     STATE_CLASS_MEASUREMENT,
     CONF_ID,
+    CONF_MODE,
+    ENTITY_CATEGORY_CONFIG,
     UNIT_CELSIUS,
     UNIT_PERCENT,
 )
@@ -15,12 +17,18 @@ from esphome.const import (
 from .. import fineoffset_ns, FINEOFFSET_CLIENT_SCHEMA, CONF_FINEOFFSET_ID
 
 DEPENDENCIES = ["fineoffset"]
+AUTO_LOAD = ["number"]
 
 FineOffsetSensor = fineoffset_ns.class_("FineOffsetSensor", cg.PollingComponent)
+FineOffsetSensorNoNumber = fineoffset_ns.class_(
+    "FineOffsetSensorNoNumber", number.Number, cg.Parented.template(FineOffsetSensor)
+)
 
 CONF_SERIAL_NO = "sensor_no"
 CONF_TEMPERATURE = "temperature"
 CONF_HUMIDITY = "humidity"
+# Optional HA-editable override for sensor_no (WH2 IDs change on battery swap)
+CONF_SENSOR_NO_NUMBER = "sensor_no_number"
 
 CONFIG_SCHEMA = cv.All(
     cv.Schema(
@@ -38,6 +46,17 @@ CONFIG_SCHEMA = cv.All(
                 accuracy_decimals=0,
                 device_class=DEVICE_CLASS_HUMIDITY,
                 state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_SENSOR_NO_NUMBER): number.number_schema(
+                FineOffsetSensorNoNumber,
+                entity_category=ENTITY_CATEGORY_CONFIG,
+                icon="mdi:identifier",
+            ).extend(
+                {
+                    cv.Optional(CONF_MODE, default="BOX"): cv.enum(
+                        number.NUMBER_MODES, upper=True
+                    )
+                }
             ),
         }
     )
@@ -68,3 +87,11 @@ async def to_code(config):
         humidity_sensor = cg.new_Pvariable(humidity_sensor_config[CONF_ID])
         await sensor.register_sensor(humidity_sensor, humidity_sensor_config)
         cg.add(var.set_humidity_sensor(humidity_sensor))
+
+    if number_config := config.get(CONF_SENSOR_NO_NUMBER):
+        # IDs 1-255; 0 is treated as invalid by the decoder
+        sensor_no_number = await number.new_number(
+            number_config, min_value=1, max_value=255, step=1
+        )
+        await cg.register_parented(sensor_no_number, var)
+        cg.add(var.set_sensor_no_number(sensor_no_number))
