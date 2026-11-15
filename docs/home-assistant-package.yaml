@@ -59,3 +59,38 @@ automation:
       - action: button.press
         target:
           entity_id: button.fineoffset_example_deck_accept_drift
+
+  # Dashboard (persistent) notification while the sensor is offline; auto-dismissed when it returns.
+  # Complements the phone alert above: it stays visible in HA's notification panel until resolved.
+  # After an HA restart the entity goes unavailable -> off on reconnect, which re-arms the `for` trigger.
+  - id: fineoffset_deck_offline_persistent
+    alias: Deck sensor offline (persistent notification)
+    mode: restart
+    triggers:
+      # `online` itself waits `timeout` (30min); the extra 30min skips reboots and quick battery swaps
+      - trigger: state
+        entity_id: binary_sensor.fineoffset_example_deck_sensor_online
+        to: "off"
+        for: "00:30:00"
+        id: offline
+      - trigger: state
+        entity_id: binary_sensor.fineoffset_example_deck_sensor_online
+        to: "on"
+        id: online
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: offline
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  notification_id: fineoffset_deck_offline
+                  title: Deck sensor offline
+                  message: >-
+                    No readings from the deck sensor for over an hour. WH2 sensors don't report
+                    battery level, so dead batteries are the likely cause.
+        default:
+          - action: persistent_notification.dismiss
+            data:
+              notification_id: fineoffset_deck_offline
