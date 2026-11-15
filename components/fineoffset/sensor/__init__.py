@@ -1,5 +1,7 @@
 """Add support for FineOffset WH2 sensors for temperature and humidity."""
 
+import logging
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import binary_sensor, button, number, sensor, text_sensor
@@ -48,6 +50,31 @@ CONF_SENSOR_NUMBER_UPDATE = "sensor_number_update"
 CONF_APPLY_NEW_SENSOR_NUMBER = "apply_new_sensor_number"
 
 
+_LOGGER = logging.getLogger(__name__)
+
+
+def _rename_sensor_no(config):
+    """Accept the old `sensor_no` key as an alias for `sensor_number`.
+
+    Local instead of cv.rename_key(): its removed_in/component kwargs only exist in newer ESPHome.
+    """
+    if not isinstance(config, dict) or CONF_SENSOR_NO_DEPRECATED not in config:
+        return config
+    if CONF_SENSOR_NUMBER in config:
+        raise cv.Invalid(
+            f"Cannot specify both '{CONF_SENSOR_NUMBER}' and '{CONF_SENSOR_NO_DEPRECATED}'",
+            path=[CONF_SENSOR_NO_DEPRECATED],
+        )
+    _LOGGER.warning(
+        "[fineoffset] '%s' is deprecated, use '%s'",
+        CONF_SENSOR_NO_DEPRECATED,
+        CONF_SENSOR_NUMBER,
+    )
+    config = dict(config)
+    config[CONF_SENSOR_NUMBER] = config.pop(CONF_SENSOR_NO_DEPRECATED)
+    return config
+
+
 def _validate_follow(config):
     """Follow-only entities make no sense without following enabled."""
     if not config[CONF_FOLLOW_NEW_SENSOR_NUMBER]:
@@ -61,12 +88,7 @@ def _validate_follow(config):
 
 
 CONFIG_SCHEMA = cv.All(
-    cv.rename_key(
-        CONF_SENSOR_NO_DEPRECATED,
-        CONF_SENSOR_NUMBER,
-        removed_in="a future release",
-        component="fineoffset",
-    ),
+    _rename_sensor_no,
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(FineOffsetSensor),
