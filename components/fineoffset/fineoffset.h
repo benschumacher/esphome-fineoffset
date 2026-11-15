@@ -9,6 +9,7 @@
 #include "esphome/core/component.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/gpio.h"
+#include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
 
 #ifdef USE_SENSOR
@@ -215,6 +216,20 @@ class FineOffsetStore {
     FineOffsetState last_unknown_{};
     bool has_last_unknown_{false};
     bool last_unknown_consumed_{true};  // Start as consumed
+
+    // Unknown IDs already announced at INFO level (once per ID per boot, so a neighbor's sensor doesn't spam)
+    std::bitset<config::MAX_SENSOR_IDS> announced_unknown_ids_{};
+
+    // Reception tracking for staleness/drift (NOT cleared by periodic_cleanup, unlike the consumed-state data).
+    // millis() of the last valid+plausible packet per ID; only meaningful where seen_ids_ is set.
+    uint32_t last_seen_ms_[config::MAX_SENSOR_IDS]{};
+    std::bitset<config::MAX_SENSOR_IDS> seen_ids_{};
+
+    // Most recent unknown ID and how many consecutive valid packets it has sent. A WH2 sends each reading
+    // twice, so count >= 2 filters out one-off noise that happens to pass the CRC.
+    uint8_t latest_unknown_id_{0};
+    uint8_t latest_unknown_count_{0};
+    uint32_t latest_unknown_ms_{0};
 };
 
 #ifdef USE_SENSOR
@@ -238,10 +253,38 @@ class FineOffsetComponent : public Component {
         return this->store_.get_state_for_sensor_no(sensor_no);
     }
 
-    // Register known sensor IDs for unknown sensor detection
-    void register_known_sensor(uint8_t sensor_no) { this->known_sensor_ids_.set(sensor_no); }
+    // Register known sensor IDs for unknown sensor detection. Reference counted: one sensor config may hold
+    // the same ID twice (configured == active), and IDs change at runtime (override/drift).
+    void register_known_sensor(uint8_t sensor_no) {
+        if (this->known_sensor_refs_[sensor_no] < UINT8_MAX)
+            this->known_sensor_refs_[sensor_no]++;
+    }
+    void unregister_known_sensor(uint8_t sensor_no) {
+        if (this->known_sensor_refs_[sensor_no] > 0)
+            this->known_sensor_refs_[sensor_no]--;
+    }
 
-    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const { return !this->known_sensor_ids_.test(sensor_no); }
+    [[nodiscard]] bool is_unknown_sensor(uint8_t sensor_no) const { return this->known_sensor_refs_[sensor_no] == 0; }
+
+    /// Milliseconds since the last valid packet from `sensor_no`, or nullopt if never heard since boot.
+    [[nodiscard]] std::optional<uint32_t> last_seen_age_ms(uint8_t sensor_no) const {
+        if (!this->store_.seen_ids_.test(sensor_no))
+            return std::nullopt;
+        return millis() - this->store_.last_seen_ms_[sensor_no];  // unsigned math is millis()-wrap safe
+    }
+
+    struct UnknownCandidate {
+        uint8_t sensor_id;
+        uint8_t count;    // consecutive valid packets
+        uint32_t age_ms;  // since the latest one
+    };
+    /// The most recently heard unknown sensor, if any (and if it is still unknown).
+    [[nodiscard]] std::optional<UnknownCandidate> latest_unknown() const {
+        const uint8_t id = this->store_.latest_unknown_id_;
+        if (id == 0 || !this->is_unknown_sensor(id))
+            return std::nullopt;
+        return UnknownCandidate{id, this->store_.latest_unknown_count_, millis() - this->store_.latest_unknown_ms_};
+    }
 
 #ifdef USE_TEXT_SENSOR
     [[nodiscard]] std::optional<ConsumedStateGuard<FineOffsetState>> get_last_state(FineOffsetTextSensorType type) {
@@ -253,8 +296,8 @@ class FineOffsetComponent : public Component {
     friend class FineOffsetStore;
     FineOffsetStore store_;
     InternalGPIOPin* pin_;
-    // Bitset replaces std::set<uint8_t>: 32 bytes BSS, O(1), no heap
-    std::bitset<config::MAX_SENSOR_IDS> known_sensor_ids_{};
+    // Per-ID reference counts (256 bytes BSS, O(1), no heap)
+    uint8_t known_sensor_refs_[config::MAX_SENSOR_IDS]{};
 
     void schedule_diagnostic_log();
 };

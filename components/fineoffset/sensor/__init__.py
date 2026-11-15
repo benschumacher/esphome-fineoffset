@@ -1,32 +1,98 @@
 """Add support for FineOffset WH2 sensors for temperature and humidity."""
 
+import logging
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor
+from esphome.components import binary_sensor, button, number, sensor, text_sensor
 from esphome.const import (
-    DEVICE_CLASS_TEMPERATURE,
-    DEVICE_CLASS_HUMIDITY,
-    STATE_CLASS_MEASUREMENT,
     CONF_ID,
+    CONF_MODE,
+    CONF_TIMEOUT,
+    DEVICE_CLASS_CONNECTIVITY,
+    DEVICE_CLASS_HUMIDITY,
+    DEVICE_CLASS_TEMPERATURE,
+    DEVICE_CLASS_UPDATE,
+    ENTITY_CATEGORY_CONFIG,
+    ENTITY_CATEGORY_DIAGNOSTIC,
+    STATE_CLASS_MEASUREMENT,
     UNIT_CELSIUS,
     UNIT_PERCENT,
 )
 
-from .. import fineoffset_ns, FINEOFFSET_CLIENT_SCHEMA, CONF_FINEOFFSET_ID
+from .. import CONF_FINEOFFSET_ID, FINEOFFSET_CLIENT_SCHEMA, fineoffset_ns
 
 DEPENDENCIES = ["fineoffset"]
+AUTO_LOAD = ["binary_sensor", "button", "number", "text_sensor"]
 
 FineOffsetSensor = fineoffset_ns.class_("FineOffsetSensor", cg.PollingComponent)
+FineOffsetConfiguredSensorNoNumber = fineoffset_ns.class_(
+    "FineOffsetConfiguredSensorNoNumber",
+    number.Number,
+    cg.Parented.template(FineOffsetSensor),
+)
+FineOffsetAcceptDriftButton = fineoffset_ns.class_(
+    "FineOffsetAcceptDriftButton",
+    button.Button,
+    cg.Parented.template(FineOffsetSensor),
+)
 
-CONF_SERIAL_NO = "sensor_no"
+CONF_SENSOR_NUMBER = "sensor_number"
+CONF_SENSOR_NO_DEPRECATED = "sensor_no"  # pre-2026.11 name, still accepted
 CONF_TEMPERATURE = "temperature"
 CONF_HUMIDITY = "humidity"
+# WH2 IDs change on battery swap; see FineOffsetSensor docs in fineoffset_sensor.h
+CONF_FOLLOW_NEW_SENSOR_NUMBER = "follow_new_sensor_number"
+CONF_CONFIGURED_SENSOR_NUMBER = "configured_sensor_number"
+CONF_ACTIVE_SENSOR_NUMBER = "active_sensor_number"
+CONF_ONLINE = "online"
+CONF_SENSOR_NUMBER_UPDATE = "sensor_number_update"
+CONF_APPLY_NEW_SENSOR_NUMBER = "apply_new_sensor_number"
+
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _rename_sensor_no(config):
+    """Accept the old `sensor_no` key as an alias for `sensor_number`.
+
+    Local instead of cv.rename_key(): its removed_in/component kwargs only exist in newer ESPHome.
+    """
+    if not isinstance(config, dict) or CONF_SENSOR_NO_DEPRECATED not in config:
+        return config
+    if CONF_SENSOR_NUMBER in config:
+        raise cv.Invalid(
+            f"Cannot specify both '{CONF_SENSOR_NUMBER}' and '{CONF_SENSOR_NO_DEPRECATED}'",
+            path=[CONF_SENSOR_NO_DEPRECATED],
+        )
+    _LOGGER.warning(
+        "[fineoffset] '%s' is deprecated, use '%s'",
+        CONF_SENSOR_NO_DEPRECATED,
+        CONF_SENSOR_NUMBER,
+    )
+    config = dict(config)
+    config[CONF_SENSOR_NUMBER] = config.pop(CONF_SENSOR_NO_DEPRECATED)
+    return config
+
+
+def _validate_follow(config):
+    """Follow-only entities make no sense without following enabled."""
+    if not config[CONF_FOLLOW_NEW_SENSOR_NUMBER]:
+        for key in (CONF_SENSOR_NUMBER_UPDATE, CONF_APPLY_NEW_SENSOR_NUMBER):
+            if key in config:
+                raise cv.Invalid(
+                    f"'{key}' requires '{CONF_FOLLOW_NEW_SENSOR_NUMBER}: true'",
+                    path=[key],
+                )
+    return config
+
 
 CONFIG_SCHEMA = cv.All(
+    _rename_sensor_no,
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(FineOffsetSensor),
-            cv.Required(CONF_SERIAL_NO): cv.int_range(0, 255),
+            cv.Required(CONF_SENSOR_NUMBER): cv.int_range(1, 255),
             cv.Optional(CONF_TEMPERATURE): sensor.sensor_schema(
                 unit_of_measurement=UNIT_CELSIUS,
                 accuracy_decimals=1,
@@ -39,10 +105,46 @@ CONFIG_SCHEMA = cv.All(
                 device_class=DEVICE_CLASS_HUMIDITY,
                 state_class=STATE_CLASS_MEASUREMENT,
             ),
+            # Silence threshold for `online` and for drifting
+            cv.Optional(
+                CONF_TIMEOUT, default="30min"
+            ): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_FOLLOW_NEW_SENSOR_NUMBER, default=False): cv.boolean,
+            cv.Optional(CONF_CONFIGURED_SENSOR_NUMBER): number.number_schema(
+                FineOffsetConfiguredSensorNoNumber,
+                entity_category=ENTITY_CATEGORY_CONFIG,
+                icon="mdi:identifier",
+            ).extend(
+                {
+                    cv.Optional(CONF_MODE, default="BOX"): cv.enum(
+                        number.NUMBER_MODES, upper=True
+                    )
+                }
+            ),
+            # Text (not a numeric sensor) so HA shows "77", not "77.0"
+            cv.Optional(CONF_ACTIVE_SENSOR_NUMBER): text_sensor.text_sensor_schema(
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                icon="mdi:identifier",
+            ),
+            cv.Optional(CONF_ONLINE): binary_sensor.binary_sensor_schema(
+                device_class=DEVICE_CLASS_CONNECTIVITY,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            # on = a new sensor number is being followed and awaits apply (active != configured)
+            cv.Optional(CONF_SENSOR_NUMBER_UPDATE): binary_sensor.binary_sensor_schema(
+                device_class=DEVICE_CLASS_UPDATE,
+                entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            ),
+            cv.Optional(CONF_APPLY_NEW_SENSOR_NUMBER): button.button_schema(
+                FineOffsetAcceptDriftButton,
+                entity_category=ENTITY_CATEGORY_CONFIG,
+                icon="mdi:check-circle-outline",
+            ),
         }
     )
     .extend(cv.polling_component_schema("60s"))
-    .extend(FINEOFFSET_CLIENT_SCHEMA)
+    .extend(FINEOFFSET_CLIENT_SCHEMA),
+    _validate_follow,
 )
 
 
@@ -52,19 +154,40 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     paren = await cg.get_variable(config[CONF_FINEOFFSET_ID])
-    sensor_no = config[CONF_SERIAL_NO]
-
-    # Set up parent relationship and register as known sensor
-    cg.add(var.set_sensor_no(sensor_no))
+    # Known-ID registration happens in FineOffsetSensor::setup() (IDs can change at runtime)
     cg.add(var.set_parent(paren))
-    cg.add(paren.register_known_sensor(sensor_no))
+    cg.add(var.set_sensor_no(config[CONF_SENSOR_NUMBER]))
+    cg.add(var.set_timeout(config[CONF_TIMEOUT]))
+    cg.add(var.set_drift(config[CONF_FOLLOW_NEW_SENSOR_NUMBER]))
 
-    if temperature_sensor_config := config.get(CONF_TEMPERATURE):
-        temperature_sensor = cg.new_Pvariable(temperature_sensor_config[CONF_ID])
-        await sensor.register_sensor(temperature_sensor, temperature_sensor_config)
-        cg.add(var.set_temperature_sensor(temperature_sensor))
+    # Plain entities: (config key, constructor, setter on FineOffsetSensor)
+    for key, new_entity, setter in (
+        (CONF_TEMPERATURE, sensor.new_sensor, "set_temperature_sensor"),
+        (CONF_HUMIDITY, sensor.new_sensor, "set_humidity_sensor"),
+        (
+            CONF_ACTIVE_SENSOR_NUMBER,
+            text_sensor.new_text_sensor,
+            "set_active_sensor_no_text_sensor",
+        ),
+        (CONF_ONLINE, binary_sensor.new_binary_sensor, "set_online_binary_sensor"),
+        (
+            CONF_SENSOR_NUMBER_UPDATE,
+            binary_sensor.new_binary_sensor,
+            "set_drifted_binary_sensor",
+        ),
+    ):
+        if entity_config := config.get(key):
+            entity = await new_entity(entity_config)
+            cg.add(getattr(var, setter)(entity))
 
-    if humidity_sensor_config := config.get(CONF_HUMIDITY):
-        humidity_sensor = cg.new_Pvariable(humidity_sensor_config[CONF_ID])
-        await sensor.register_sensor(humidity_sensor, humidity_sensor_config)
-        cg.add(var.set_humidity_sensor(humidity_sensor))
+    if number_config := config.get(CONF_CONFIGURED_SENSOR_NUMBER):
+        # IDs 1-255; 0 is treated as invalid by the decoder
+        configured_number = await number.new_number(
+            number_config, min_value=1, max_value=255, step=1
+        )
+        await cg.register_parented(configured_number, var)
+        cg.add(var.set_configured_sensor_no_number(configured_number))
+
+    if accept_config := config.get(CONF_APPLY_NEW_SENSOR_NUMBER):
+        accept_button = await button.new_button(accept_config)
+        await cg.register_parented(accept_button, var)

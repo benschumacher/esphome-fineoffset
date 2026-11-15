@@ -20,7 +20,7 @@ fineoffset:
 sensor:
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
-    sensor_no: 0  # Minimum sensor ID
+    sensor_number: 1  # Minimum sensor number (0 is invalid)
     temperature:
       name: "Sensor 0 Temperature"
     humidity:
@@ -28,7 +28,7 @@ sensor:
 
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
-    sensor_no: 255  # Maximum sensor ID
+    sensor_number: 255  # Maximum sensor ID
     temperature:
       name: "Sensor 255 Temperature"
     humidity:

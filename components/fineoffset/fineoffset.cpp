@@ -10,6 +10,8 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <cinttypes>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -262,15 +264,33 @@ void FineOffsetStore::record_state() {
         if (state.valid && state.plausible) {
             // Only store plausible readings for sensor data
             if (state.sensor_id < config::MAX_SENSOR_IDS) {
+                const uint32_t now = millis();
+                this->last_seen_ms_[state.sensor_id] = now;
+                this->seen_ids_.set(state.sensor_id);
                 this->sensor_states_[state.sensor_id] = state;
                 this->sensor_states_valid_[state.sensor_id] = true;
                 this->sensor_states_consumed_[state.sensor_id] = false;  // Mark as fresh data
             }
 
             if (this->parent_->is_unknown_sensor(state.sensor_id)) {
+                if (state.sensor_id == this->latest_unknown_id_) {
+                    if (this->latest_unknown_count_ < UINT8_MAX)
+                        this->latest_unknown_count_++;
+                } else {
+                    this->latest_unknown_id_ = state.sensor_id;
+                    this->latest_unknown_count_ = 1;
+                }
+                this->latest_unknown_ms_ = millis();
+
                 this->last_unknown_ = state;
                 this->has_last_unknown_ = true;
                 this->last_unknown_consumed_ = false;  // Mark as fresh data
+
+                if (!this->announced_unknown_ids_.test(state.sensor_id)) {
+                    this->announced_unknown_ids_.set(state.sensor_id);
+                    ESP_LOGI(TAG, "New unknown sensor ID %u (%.1f°C, %u%%) - set sensor_number to adopt it",
+                             state.sensor_id, state.temperature * 0.1f, state.humidity);
+                }
             }
         } else {
             // Treat CRC-valid but implausible readings as "bad" for debugging
@@ -336,7 +356,9 @@ void FineOffsetComponent::setup() {
 
 void FineOffsetComponent::schedule_diagnostic_log() {
     this->set_timeout("diagnostic_log", config::DIAGNOSTIC_LOG_INTERVAL_MS, [this]() {
-        ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
+        ESP_LOGV(TAG,
+                 "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%" PRIu32
+                 " bad_count_=%" PRIu32,
                  (this->store_.accept_flag_.load(std::memory_order_relaxed) ? "true" : "false"),
                  this->store_.wh2_flags_.load(std::memory_order_relaxed),
                  this->store_.have_sensor_data_.load(std::memory_order_relaxed),

@@ -76,7 +76,7 @@ fineoffset:
 sensor:
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
-    sensor_no: 77  # Unique sensor identifier
+    sensor_number: 77  # Unique sensor identifier
     temperature:
       name: "Temperature"
     humidity:

@@ -1,0 +1,108 @@
+# Home Assistant package: nag notifications for a FineOffset sensor that changed sensor number or went offline.
+#
+# Drop into your HA packages directory (e.g. packages/fineoffset_deck.yaml) and adjust:
+#   - entity IDs below assume ESPHome device "fineoffset-example" and the entity names from example.yaml
+#     ("." is dropped from entity IDs, e.g. "Deck Sensor No." -> binary_sensor.fineoffset_example_deck_sensor_no);
+#     verify them in HA
+#   - notifier: replace mobile_app_your_phone with your Companion app notifier
+#
+# Uses the `alert` integration (repeats until resolved/acknowledged) rather than a one-shot automation,
+# so a missed notification gets re-sent.
+
+alert:
+  deck_sensor_number_update:
+    name: Deck sensor has a new sensor number
+    entity_id: binary_sensor.fineoffset_example_deck_sensor_no  # sensor_number_update
+    state: "on"
+    repeat: 720  # minutes; re-notify twice a day until applied (or the original sensor number returns)
+    skip_first: false
+    can_acknowledge: true
+    title: Deck sensor
+    message: >-
+      Following new sensor No. {{ states('sensor.fineoffset_example_deck_active_sensor_no') | int(0) }}
+      instead of {{ states('number.fineoffset_example_deck_configured_sensor_no') | int(0) }}
+      (batteries changed?). Tap Apply to make it permanent.
+    done_message: clear_notification  # removes the notification once resolved
+    notifiers:
+      - mobile_app_your_phone
+    data:
+      tag: fineoffset-deck-sensor-number-update
+      actions:
+        - action: FINEOFFSET_APPLY_DECK_SENSOR_NUMBER
+          title: Apply
+
+  deck_sensor_offline:
+    name: Deck sensor offline
+    # `online` already waits for the component `timeout` (30min) of silence. skip_first + the first
+    # repeat step adds 5min, enough to skip device boots (online within ~1min) and battery swaps (the new
+    # sensor number is followed within ~1min of `timeout`, bringing it back online).
+    entity_id: binary_sensor.fineoffset_example_deck_sensor_online
+    state: "off"
+    repeat: [5, 720]
+    skip_first: true
+    can_acknowledge: true
+    title: Deck sensor
+    message: No readings from the deck sensor for over 30 minutes. Batteries are likely dead.
+    done_message: clear_notification
+    notifiers:
+      - mobile_app_your_phone
+    data:
+      tag: fineoffset-deck-offline
+
+automation:
+  - id: fineoffset_apply_deck_sensor_number
+    alias: Apply new deck sensor number from notification
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: FINEOFFSET_APPLY_DECK_SENSOR_NUMBER
+    actions:
+      - action: button.press
+        target:
+          entity_id: button.fineoffset_example_deck_apply_new_sensor_no
+
+  # Dashboard (persistent) notification while the sensor is offline; auto-dismissed when it returns.
+  # Complements the phone alert above: it stays visible in HA's notification panel until resolved.
+  # After an HA restart the entity goes unavailable -> off on reconnect, which re-arms the `for` trigger.
+  - id: fineoffset_deck_offline_persistent
+    alias: Deck sensor offline (persistent notification)
+    mode: restart
+    triggers:
+      # `online` itself waits `timeout` (30min); the extra 5min skips device boots and battery swaps
+      - trigger: state
+        entity_id: binary_sensor.fineoffset_example_deck_sensor_online
+        to: "off"
+        for: "00:05:00"
+        id: offline
+      - trigger: state
+        entity_id: binary_sensor.fineoffset_example_deck_sensor_online
+        to: "on"
+        id: online
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: offline
+            sequence:
+              - action: persistent_notification.create
+                data:
+                  notification_id: fineoffset_deck_offline
+                  title: Deck sensor offline
+                  message: >-
+                    No readings from the deck sensor for over 30 minutes. WH2 sensors don't report
+                    battery level, so dead batteries are the likely cause.
+        default:
+          - action: persistent_notification.dismiss
+            data:
+              notification_id: fineoffset_deck_offline
+
+# Dashboard card (not part of the package; paste into a dashboard): the apply button only appears when a new
+# sensor number is waiting. ESPHome can't make an entity unavailable at runtime, so this hides it in the UI.
+#
+#   type: tile
+#   entity: button.fineoffset_example_deck_apply_new_sensor_no
+#   visibility:
+#     - condition: state
+#       entity: binary_sensor.fineoffset_example_deck_sensor_no
+#       state: "on"
