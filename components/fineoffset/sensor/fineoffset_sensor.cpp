@@ -155,8 +155,10 @@ void FineOffsetSensor::publish_status_() {
     if (this->configured_sensor_no_number_ != nullptr) {
         this->configured_sensor_no_number_->publish_state(this->configured_);
     }
-    if (this->active_sensor_no_sensor_ != nullptr) {
-        this->active_sensor_no_sensor_->publish_state(this->active_);
+    if (this->active_sensor_no_text_sensor_ != nullptr) {
+        char buf[4];  // "255" + NUL
+        snprintf(buf, sizeof(buf), "%u", this->active_);
+        this->active_sensor_no_text_sensor_->publish_state(buf);
     }
     if (this->drifted_binary_sensor_ != nullptr) {
         this->drifted_binary_sensor_->publish_state(this->is_drifted());
@@ -174,7 +176,7 @@ void FineOffsetSensor::dump_config() {
     if (this->configured_sensor_no_number_ != nullptr) {
         LOG_NUMBER("  ", "Configured Sensor No", this->configured_sensor_no_number_);
     }
-    LOG_SENSOR("  ", "Active Sensor No", this->active_sensor_no_sensor_);
+    LOG_TEXT_SENSOR("  ", "Active Sensor No", this->active_sensor_no_text_sensor_);
     LOG_BINARY_SENSOR("  ", "Online", this->online_binary_sensor_);
     LOG_BINARY_SENSOR("  ", "Drifted", this->drifted_binary_sensor_);
     LOG_UPDATE_INTERVAL(this);

@@ -59,7 +59,7 @@ struct Rig {
     FineOffsetComponent hub;
     FineOffsetSensor s;
     FineOffsetConfiguredSensorNoNumber num;
-    sensor::Sensor active;
+    text_sensor::TextSensor active;
     binary_sensor::BinarySensor online, drifted;
     FineOffsetAcceptDriftButton accept;
     Rig(uint8_t id, bool drift = true) {
@@ -70,7 +70,7 @@ struct Rig {
         num.set_parent(&s);
         accept.set_parent(&s);
         s.set_configured_sensor_no_number(&num);
-        s.set_active_sensor_no_sensor(&active);
+        s.set_active_sensor_no_text_sensor(&active);
         s.set_online_binary_sensor(&online);
         s.set_drifted_binary_sensor(&drifted);
         s.setup();
@@ -111,7 +111,7 @@ int main() {
         CHECK(r.s.active_ == 142);
         CHECK(r.s.configured_ == 77);
         CHECK(r.drifted.state);
-        CHECK(r.active.state == 142);
+        CHECK(r.active.state == "142");
         CHECK(r.num.state == 77);
         CHECK(r.online.state);
         CHECK(!r.hub.is_unknown_sensor(142));

@@ -2,7 +2,7 @@
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, button, number, sensor
+from esphome.components import binary_sensor, button, number, sensor, text_sensor
 from esphome.const import (
     CONF_ID,
     CONF_MODE,
@@ -21,7 +21,7 @@ from esphome.const import (
 from .. import CONF_FINEOFFSET_ID, FINEOFFSET_CLIENT_SCHEMA, fineoffset_ns
 
 DEPENDENCIES = ["fineoffset"]
-AUTO_LOAD = ["binary_sensor", "button", "number"]
+AUTO_LOAD = ["binary_sensor", "button", "number", "text_sensor"]
 
 FineOffsetSensor = fineoffset_ns.class_("FineOffsetSensor", cg.PollingComponent)
 FineOffsetConfiguredSensorNoNumber = fineoffset_ns.class_(
@@ -89,8 +89,8 @@ CONFIG_SCHEMA = cv.All(
                     )
                 }
             ),
-            cv.Optional(CONF_ACTIVE_SENSOR_NO): sensor.sensor_schema(
-                accuracy_decimals=0,
+            # Text (not a numeric sensor) so HA shows "77", not "77.0"
+            cv.Optional(CONF_ACTIVE_SENSOR_NO): text_sensor.text_sensor_schema(
                 entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
                 icon="mdi:identifier",
             ),
@@ -132,7 +132,11 @@ async def to_code(config):
     for key, new_entity, setter in (
         (CONF_TEMPERATURE, sensor.new_sensor, "set_temperature_sensor"),
         (CONF_HUMIDITY, sensor.new_sensor, "set_humidity_sensor"),
-        (CONF_ACTIVE_SENSOR_NO, sensor.new_sensor, "set_active_sensor_no_sensor"),
+        (
+            CONF_ACTIVE_SENSOR_NO,
+            text_sensor.new_text_sensor,
+            "set_active_sensor_no_text_sensor",
+        ),
         (CONF_ONLINE, binary_sensor.new_binary_sensor, "set_online_binary_sensor"),
         (CONF_DRIFTED, binary_sensor.new_binary_sensor, "set_drifted_binary_sensor"),
     ):

@@ -5,6 +5,7 @@
 #include "esphome/components/button/button.h"
 #include "esphome/components/number/number.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
@@ -57,7 +58,7 @@ class FineOffsetSensor : public PollingComponent {
     void set_configured_sensor_no_number(FineOffsetConfiguredSensorNoNumber* n) {
         this->configured_sensor_no_number_ = n;
     }
-    void set_active_sensor_no_sensor(sensor::Sensor* s) { this->active_sensor_no_sensor_ = s; }
+    void set_active_sensor_no_text_sensor(text_sensor::TextSensor* t) { this->active_sensor_no_text_sensor_ = t; }
     void set_online_binary_sensor(binary_sensor::BinarySensor* b) { this->online_binary_sensor_ = b; }
     void set_drifted_binary_sensor(binary_sensor::BinarySensor* b) { this->drifted_binary_sensor_ = b; }
 
@@ -103,7 +104,7 @@ class FineOffsetSensor : public PollingComponent {
     sensor::Sensor* temperature_sensor_{nullptr};
     sensor::Sensor* humidity_sensor_{nullptr};
     FineOffsetConfiguredSensorNoNumber* configured_sensor_no_number_{nullptr};
-    sensor::Sensor* active_sensor_no_sensor_{nullptr};
+    text_sensor::TextSensor* active_sensor_no_text_sensor_{nullptr};
     binary_sensor::BinarySensor* online_binary_sensor_{nullptr};
     binary_sensor::BinarySensor* drifted_binary_sensor_{nullptr};
 };

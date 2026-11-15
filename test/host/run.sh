@@ -31,8 +31,8 @@ printf '#define USE_HOST\n#define USE_ESPHOME_HOST_MAC_ADDRESS {0x02, 0x00, 0x00
 mkdir -p "$work/stub" && printf '#pragma once\n#include <cstdint>\n' >"$work/stub/esp_types.h"
 
 # 3. Build and run.
-mapfile -t srcs < <(find "$src/esphome/core" "$src"/esphome/components/{sensor,binary_sensor,number,button,host,fineoffset} \
-  -name '*.cpp' ! -path '*text_sensor*' ! -path '*/host/core.cpp')
+mapfile -t srcs < <(find "$src/esphome/core" "$src"/esphome/components/{sensor,text_sensor,binary_sensor,number,button,host,fineoffset} \
+  -name '*.cpp' ! -path '*/host/core.cpp')
 g++ -std=gnu++20 -O0 -g -DUSE_HOST -DIRAM_ATTR= -I"$src" -I"$work/stub" \
   "${srcs[@]}" "$repo/test/host/stubs.cpp" "$repo/test/host/test_drift.cpp" -o "$work/test_drift"
 "$work/test_drift" | grep -v '^\['
