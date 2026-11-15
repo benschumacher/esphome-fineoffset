@@ -20,7 +20,7 @@ void FineOffsetConfiguredSensorNoNumber::control(float value) {
     // HA enforces min/max/step from the schema, but guard anyway: round and clamp to a valid 8-bit ID.
     const long rounded = std::lround(value);
     if (rounded < 1 || rounded > 255) {
-        ESP_LOGW(TAG, "Ignoring out-of-range sensor_no %.0f (valid: 1-255)", value);
+        ESP_LOGW(TAG, "Ignoring out-of-range sensor number %.0f (valid: 1-255)", value);
         this->publish_state(this->parent_->get_configured_sensor_no());  // snap the UI back
         return;
     }
@@ -46,7 +46,7 @@ void FineOffsetSensor::setup() {
         configured = stored.configured;
         // A stored drift is only honored if drift is still enabled.
         active = this->drift_enabled_ ? stored.active : stored.configured;
-        ESP_LOGI(TAG, "Restored sensor_no configured=%u active=%u (YAML default %u)", configured, active,
+        ESP_LOGI(TAG, "Restored sensor number configured=%u active=%u (YAML default %u)", configured, active,
                  this->default_sensor_no_);
     }
 
@@ -89,19 +89,19 @@ void FineOffsetSensor::set_ids_(uint8_t configured, uint8_t active) {
 
 void FineOffsetSensor::set_configured_sensor_no(uint8_t sensor_no) {
     if (sensor_no == 0) {
-        ESP_LOGW(TAG, "Ignoring sensor_no 0 (reserved/invalid)");
+        ESP_LOGW(TAG, "Ignoring sensor number 0 (reserved/invalid)");
         return;
     }
-    ESP_LOGI(TAG, "sensor_no set to %u (was configured=%u active=%u)", sensor_no, this->configured_, this->active_);
+    ESP_LOGI(TAG, "Sensor number set to %u (was configured=%u active=%u)", sensor_no, this->configured_, this->active_);
     this->set_ids_(sensor_no, sensor_no);
 }
 
 void FineOffsetSensor::accept_drift() {
     if (!this->is_drifted()) {
-        ESP_LOGI(TAG, "Accept drift: not drifted (sensor_no %u), nothing to do", this->configured_);
+        ESP_LOGI(TAG, "Apply: no new sensor number pending (%u), nothing to do", this->configured_);
         return;
     }
-    ESP_LOGI(TAG, "Accepted drift: configured sensor_no %u -> %u", this->configured_, this->active_);
+    ESP_LOGI(TAG, "Applied new sensor number: configured %u -> %u", this->configured_, this->active_);
     this->set_ids_(this->active_, this->active_);
 }
 
@@ -115,7 +115,7 @@ void FineOffsetSensor::evaluate_drift_() {
     if (this->is_drifted()) {
         const auto configured_age = this->parent_->last_seen_age_ms(this->configured_);
         if (configured_age.has_value() && *configured_age < now - this->drifted_at_ms_) {
-            ESP_LOGI(TAG, "Configured sensor_no %u is back; reverting drift from %u", this->configured_, this->active_);
+            ESP_LOGI(TAG, "Configured sensor number %u is back; reverting from %u", this->configured_, this->active_);
             this->set_ids_(this->configured_, this->configured_);
             return;
         }
@@ -135,7 +135,9 @@ void FineOffsetSensor::evaluate_drift_() {
         return;
     }
 
-    ESP_LOGW(TAG, "sensor_no %u silent for %" PRIu32 "s; drifting to new ID %u (configured stays %u until accepted)",
+    ESP_LOGW(TAG,
+             "Sensor number %u silent for %" PRIu32
+             "s; following new sensor number %u (configured stays %u until applied)",
              this->active_, silent_ms / 1000, candidate->sensor_id, this->configured_);
     if (!this->is_drifted()) {
         this->drifted_at_ms_ = now;
@@ -170,15 +172,16 @@ void FineOffsetSensor::publish_status_() {
 
 void FineOffsetSensor::dump_config() {
     ESP_LOGCONFIG(TAG, "FineOffset Sensor:");
-    ESP_LOGCONFIG(TAG, "  Sensor No: configured=%u active=%u (YAML default %u)", this->configured_, this->active_,
+    ESP_LOGCONFIG(TAG, "  Sensor Number: configured=%u active=%u (YAML default %u)", this->configured_, this->active_,
                   this->default_sensor_no_);
-    ESP_LOGCONFIG(TAG, "  Timeout: %" PRIu32 "s, Drift: %s", this->timeout_ms_ / 1000, YESNO(this->drift_enabled_));
+    ESP_LOGCONFIG(TAG, "  Timeout: %" PRIu32 "s, Follow new sensor number: %s", this->timeout_ms_ / 1000,
+                  YESNO(this->drift_enabled_));
     if (this->configured_sensor_no_number_ != nullptr) {
-        LOG_NUMBER("  ", "Configured Sensor No", this->configured_sensor_no_number_);
+        LOG_NUMBER("  ", "Configured Sensor Number", this->configured_sensor_no_number_);
     }
-    LOG_TEXT_SENSOR("  ", "Active Sensor No", this->active_sensor_no_text_sensor_);
+    LOG_TEXT_SENSOR("  ", "Active Sensor Number", this->active_sensor_no_text_sensor_);
     LOG_BINARY_SENSOR("  ", "Online", this->online_binary_sensor_);
-    LOG_BINARY_SENSOR("  ", "Drifted", this->drifted_binary_sensor_);
+    LOG_BINARY_SENSOR("  ", "Sensor Number Update", this->drifted_binary_sensor_);
     LOG_UPDATE_INTERVAL(this);
 }
 

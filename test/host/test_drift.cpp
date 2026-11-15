@@ -254,7 +254,7 @@ int main() {
         }
     }
 
-    printf("11. YAML sensor_no change discards stored override\n");
+    printf("11. YAML sensor_number change discards stored override\n");
     {
         global_preferences->reset();
         g_fake_ms = 1000;

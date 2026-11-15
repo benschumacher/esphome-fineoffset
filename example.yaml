@@ -19,19 +19,19 @@ fineoffset:
 sensor:
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
-    sensor_no: 77     # WH2 IDs change on battery swap; see drift below
-    timeout: 30min    # silence before `online` goes off / drift is allowed
-    drift: true       # follow a new ID after `timeout` of silence; snaps back if 77 returns
-    configured_sensor_no:
-      name: Deck Configured Sensor ID
-    active_sensor_no:
-      name: Deck Active Sensor ID
+    sensor_number: 77               # WH2 sensor numbers change on battery swap; see below
+    timeout: 30min                  # silence before `online` goes off / a new number is followed
+    follow_new_sensor_number: true  # snaps back if 77 returns
+    configured_sensor_number:
+      name: Deck Configured Sensor No.
+    active_sensor_number:
+      name: Deck Active Sensor No.
     online:
       name: Deck Sensor Online
-    drifted:
-      name: Deck Sensor Drifted
-    accept_drift:
-      name: Deck Accept Drift
+    sensor_number_update:
+      name: Deck Sensor No.
+    apply_new_sensor_number:
+      name: Deck Apply New Sensor No.
     temperature:
       name: Deck Temperature
     humidity:
@@ -39,7 +39,7 @@ sensor:
 
   - platform: fineoffset
     fineoffset_id: fineoffset_radio
-    sensor_no: 23
+    sensor_number: 23
     temperature:
       name: Temperature
     humidity:

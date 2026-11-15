@@ -1,39 +1,41 @@
-# Home Assistant package: nag notifications for a FineOffset sensor that drifted or went offline.
+# Home Assistant package: nag notifications for a FineOffset sensor that changed sensor number or went offline.
 #
 # Drop into your HA packages directory (e.g. packages/fineoffset_deck.yaml) and adjust:
 #   - entity IDs below assume ESPHome device "fineoffset-example" and the entity names from example.yaml
+#     ("." is dropped from entity IDs, e.g. "Deck Sensor No." -> binary_sensor.fineoffset_example_deck_sensor_no);
+#     verify them in HA
 #   - notifier: replace mobile_app_your_phone with your Companion app notifier
 #
 # Uses the `alert` integration (repeats until resolved/acknowledged) rather than a one-shot automation,
 # so a missed notification gets re-sent.
 
 alert:
-  deck_sensor_drifted:
-    name: Deck sensor ID drifted
-    entity_id: binary_sensor.fineoffset_example_deck_sensor_drifted
+  deck_sensor_number_update:
+    name: Deck sensor has a new sensor number
+    entity_id: binary_sensor.fineoffset_example_deck_sensor_no  # sensor_number_update
     state: "on"
-    repeat: 720  # minutes; re-notify twice a day until accepted (or the original ID returns)
+    repeat: 720  # minutes; re-notify twice a day until applied (or the original sensor number returns)
     skip_first: false
     can_acknowledge: true
     title: Deck sensor
     message: >-
-      Following new ID {{ states('sensor.fineoffset_example_deck_active_sensor_id') | int(0) }}
-      instead of {{ states('number.fineoffset_example_deck_configured_sensor_id') | int(0) }}
-      (batteries changed?). Tap Accept to make it permanent.
+      Following new sensor No. {{ states('sensor.fineoffset_example_deck_active_sensor_no') | int(0) }}
+      instead of {{ states('number.fineoffset_example_deck_configured_sensor_no') | int(0) }}
+      (batteries changed?). Tap Apply to make it permanent.
     done_message: clear_notification  # removes the notification once resolved
     notifiers:
       - mobile_app_your_phone
     data:
-      tag: fineoffset-deck-drifted
+      tag: fineoffset-deck-sensor-number-update
       actions:
-        - action: FINEOFFSET_ACCEPT_DECK_DRIFT
-          title: Accept
+        - action: FINEOFFSET_APPLY_DECK_SENSOR_NUMBER
+          title: Apply
 
   deck_sensor_offline:
     name: Deck sensor offline
     # `online` already waits for the component `timeout` (30min) of silence. skip_first + the first
-    # repeat step adds another 30min, so device reboots and a quick battery swap (which drifts within a
-    # few minutes and comes back online) don't notify.
+    # repeat step adds another 30min, so device reboots and a quick battery swap (which follows the new sensor
+    # number within a few minutes and comes back online) don't notify.
     entity_id: binary_sensor.fineoffset_example_deck_sensor_online
     state: "off"
     repeat: [30, 720]
@@ -48,17 +50,17 @@ alert:
       tag: fineoffset-deck-offline
 
 automation:
-  - id: fineoffset_accept_deck_drift
-    alias: Accept deck sensor drift from notification
+  - id: fineoffset_apply_deck_sensor_number
+    alias: Apply new deck sensor number from notification
     triggers:
       - trigger: event
         event_type: mobile_app_notification_action
         event_data:
-          action: FINEOFFSET_ACCEPT_DECK_DRIFT
+          action: FINEOFFSET_APPLY_DECK_SENSOR_NUMBER
     actions:
       - action: button.press
         target:
-          entity_id: button.fineoffset_example_deck_accept_drift
+          entity_id: button.fineoffset_example_deck_apply_new_sensor_no
 
   # Dashboard (persistent) notification while the sensor is offline; auto-dismissed when it returns.
   # Complements the phone alert above: it stays visible in HA's notification panel until resolved.
@@ -94,3 +96,13 @@ automation:
           - action: persistent_notification.dismiss
             data:
               notification_id: fineoffset_deck_offline
+
+# Dashboard card (not part of the package; paste into a dashboard): the apply button only appears when a new
+# sensor number is waiting. ESPHome can't make an entity unavailable at runtime, so this hides it in the UI.
+#
+#   type: tile
+#   entity: button.fineoffset_example_deck_apply_new_sensor_no
+#   visibility:
+#     - condition: state
+#       entity: binary_sensor.fineoffset_example_deck_sensor_no
+#       state: "on"
