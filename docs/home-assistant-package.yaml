@@ -34,15 +34,15 @@ alert:
   deck_sensor_offline:
     name: Deck sensor offline
     # `online` already waits for the component `timeout` (30min) of silence. skip_first + the first
-    # repeat step adds another 30min, so device reboots and a quick battery swap (which follows the new sensor
-    # number within a few minutes and comes back online) don't notify.
+    # repeat step adds 5min, enough to skip device boots (online within ~1min) and battery swaps (the new
+    # sensor number is followed within ~1min of `timeout`, bringing it back online).
     entity_id: binary_sensor.fineoffset_example_deck_sensor_online
     state: "off"
-    repeat: [30, 720]
+    repeat: [5, 720]
     skip_first: true
     can_acknowledge: true
     title: Deck sensor
-    message: No readings from the deck sensor for over an hour. Batteries are likely dead.
+    message: No readings from the deck sensor for over 30 minutes. Batteries are likely dead.
     done_message: clear_notification
     notifiers:
       - mobile_app_your_phone
@@ -69,11 +69,11 @@ automation:
     alias: Deck sensor offline (persistent notification)
     mode: restart
     triggers:
-      # `online` itself waits `timeout` (30min); the extra 30min skips reboots and quick battery swaps
+      # `online` itself waits `timeout` (30min); the extra 5min skips device boots and battery swaps
       - trigger: state
         entity_id: binary_sensor.fineoffset_example_deck_sensor_online
         to: "off"
-        for: "00:30:00"
+        for: "00:05:00"
         id: offline
       - trigger: state
         entity_id: binary_sensor.fineoffset_example_deck_sensor_online
@@ -90,7 +90,7 @@ automation:
                   notification_id: fineoffset_deck_offline
                   title: Deck sensor offline
                   message: >-
-                    No readings from the deck sensor for over an hour. WH2 sensors don't report
+                    No readings from the deck sensor for over 30 minutes. WH2 sensors don't report
                     battery level, so dead batteries are the likely cause.
         default:
           - action: persistent_notification.dismiss
