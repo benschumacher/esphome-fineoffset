@@ -58,7 +58,7 @@ static const uint32_t MIN = 60 * 1000;
 struct Rig {
     FineOffsetComponent hub;
     FineOffsetSensor s;
-    FineOffsetSensorNoNumber num;
+    FineOffsetConfiguredSensorNoNumber num;
     sensor::Sensor active;
     binary_sensor::BinarySensor online, drifted;
     FineOffsetAcceptDriftButton accept;
@@ -69,7 +69,7 @@ struct Rig {
         s.set_drift(drift);
         num.set_parent(&s);
         accept.set_parent(&s);
-        s.set_sensor_no_number(&num);
+        s.set_configured_sensor_no_number(&num);
         s.set_active_sensor_no_sensor(&active);
         s.set_online_binary_sensor(&online);
         s.set_drifted_binary_sensor(&drifted);

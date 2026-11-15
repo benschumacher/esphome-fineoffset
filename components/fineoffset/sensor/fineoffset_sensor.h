@@ -15,7 +15,7 @@ namespace fineoffset {
 class FineOffsetSensor;
 
 /// HA-editable *configured* radio ID. Setting it also makes it the active ID (clears any drift).
-class FineOffsetSensorNoNumber : public number::Number, public Parented<FineOffsetSensor> {
+class FineOffsetConfiguredSensorNoNumber : public number::Number, public Parented<FineOffsetSensor> {
    protected:
     void control(float value) override;
 };
@@ -54,7 +54,9 @@ class FineOffsetSensor : public PollingComponent {
     void set_parent(FineOffsetComponent* parent) { this->parent_ = parent; }
     void set_temperature_sensor(sensor::Sensor* s) { this->temperature_sensor_ = s; }
     void set_humidity_sensor(sensor::Sensor* s) { this->humidity_sensor_ = s; }
-    void set_sensor_no_number(FineOffsetSensorNoNumber* n) { this->sensor_no_number_ = n; }
+    void set_configured_sensor_no_number(FineOffsetConfiguredSensorNoNumber* n) {
+        this->configured_sensor_no_number_ = n;
+    }
     void set_active_sensor_no_sensor(sensor::Sensor* s) { this->active_sensor_no_sensor_ = s; }
     void set_online_binary_sensor(binary_sensor::BinarySensor* b) { this->online_binary_sensor_ = b; }
     void set_drifted_binary_sensor(binary_sensor::BinarySensor* b) { this->drifted_binary_sensor_ = b; }
@@ -100,7 +102,7 @@ class FineOffsetSensor : public PollingComponent {
 
     sensor::Sensor* temperature_sensor_{nullptr};
     sensor::Sensor* humidity_sensor_{nullptr};
-    FineOffsetSensorNoNumber* sensor_no_number_{nullptr};
+    FineOffsetConfiguredSensorNoNumber* configured_sensor_no_number_{nullptr};
     sensor::Sensor* active_sensor_no_sensor_{nullptr};
     binary_sensor::BinarySensor* online_binary_sensor_{nullptr};
     binary_sensor::BinarySensor* drifted_binary_sensor_{nullptr};

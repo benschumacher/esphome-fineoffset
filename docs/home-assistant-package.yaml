@@ -18,7 +18,7 @@ alert:
     title: Deck sensor
     message: >-
       Following new ID {{ states('sensor.fineoffset_example_deck_active_sensor_id') | int(0) }}
-      instead of {{ states('number.fineoffset_example_deck_sensor_id') | int(0) }}
+      instead of {{ states('number.fineoffset_example_deck_configured_sensor_id') | int(0) }}
       (batteries changed?). Tap Accept to make it permanent.
     done_message: clear_notification  # removes the notification once resolved
     notifiers:

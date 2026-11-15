@@ -47,13 +47,13 @@ sensor:
     sensor_no: 77     # configured ID (default; overridable from HA)
     timeout: 30min    # silence before `online` goes off and drift is allowed (default 30min)
     drift: true       # default false
-    sensor_no_number:   { name: Deck Sensor ID }         # set the configured ID from HA
-    active_sensor_no:   { name: Deck Active Sensor ID }  # ID readings currently come from
-    online:             { name: Deck Sensor Online }     # active ID heard within `timeout`
-    drifted:            { name: Deck Sensor Drifted }    # active != configured
-    accept_drift:       { name: Deck Accept Drift }      # make the active ID the configured one
-    temperature:        { name: Deck Temperature }
-    humidity:           { name: Deck Humidity }
+    configured_sensor_no: { name: Deck Configured Sensor ID }  # configured ID, editable from HA
+    active_sensor_no:     { name: Deck Active Sensor ID }      # ID readings currently come from
+    online:               { name: Deck Sensor Online }         # active ID heard within `timeout`
+    drifted:              { name: Deck Sensor Drifted }        # active != configured
+    accept_drift:         { name: Deck Accept Drift }          # make the active ID the configured one
+    temperature:          { name: Deck Temperature }
+    humidity:             { name: Deck Humidity }
 ```
 
 Rules:
@@ -63,7 +63,7 @@ Rules:
 - **Silence alone never changes anything** beyond `online` turning off.
 - **Snap-back:** if the configured ID is heard again while drifted, the sensor reverts and `drifted` clears. A wrong
   drift (e.g. onto a neighbor's sensor during an outage) self-corrects.
-- **Accept:** pressing `accept_drift` (or setting `sensor_no_number`) makes it permanent and clears `drifted`.
+- **Accept:** pressing `accept_drift` (or setting `configured_sensor_no`) makes it permanent and clears `drifted`.
 - Configured and active IDs **persist across reboots**. Changing `sensor_no` in YAML and reflashing discards them.
 
 WH2 packets carry **no battery status**, so `online` is the dead-battery signal. See

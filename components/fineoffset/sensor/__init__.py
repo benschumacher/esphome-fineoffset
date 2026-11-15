@@ -24,8 +24,10 @@ DEPENDENCIES = ["fineoffset"]
 AUTO_LOAD = ["binary_sensor", "button", "number"]
 
 FineOffsetSensor = fineoffset_ns.class_("FineOffsetSensor", cg.PollingComponent)
-FineOffsetSensorNoNumber = fineoffset_ns.class_(
-    "FineOffsetSensorNoNumber", number.Number, cg.Parented.template(FineOffsetSensor)
+FineOffsetConfiguredSensorNoNumber = fineoffset_ns.class_(
+    "FineOffsetConfiguredSensorNoNumber",
+    number.Number,
+    cg.Parented.template(FineOffsetSensor),
 )
 FineOffsetAcceptDriftButton = fineoffset_ns.class_(
     "FineOffsetAcceptDriftButton",
@@ -38,7 +40,7 @@ CONF_TEMPERATURE = "temperature"
 CONF_HUMIDITY = "humidity"
 # WH2 IDs change on battery swap; see FineOffsetSensor docs in fineoffset_sensor.h
 CONF_DRIFT = "drift"
-CONF_SENSOR_NO_NUMBER = "sensor_no_number"
+CONF_CONFIGURED_SENSOR_NO = "configured_sensor_no"
 CONF_ACTIVE_SENSOR_NO = "active_sensor_no"
 CONF_ONLINE = "online"
 CONF_DRIFTED = "drifted"
@@ -76,8 +78,8 @@ CONFIG_SCHEMA = cv.All(
                 CONF_TIMEOUT, default="30min"
             ): cv.positive_time_period_milliseconds,
             cv.Optional(CONF_DRIFT, default=False): cv.boolean,
-            cv.Optional(CONF_SENSOR_NO_NUMBER): number.number_schema(
-                FineOffsetSensorNoNumber,
+            cv.Optional(CONF_CONFIGURED_SENSOR_NO): number.number_schema(
+                FineOffsetConfiguredSensorNoNumber,
                 entity_category=ENTITY_CATEGORY_CONFIG,
                 icon="mdi:identifier",
             ).extend(
@@ -138,13 +140,13 @@ async def to_code(config):
             entity = await new_entity(entity_config)
             cg.add(getattr(var, setter)(entity))
 
-    if number_config := config.get(CONF_SENSOR_NO_NUMBER):
+    if number_config := config.get(CONF_CONFIGURED_SENSOR_NO):
         # IDs 1-255; 0 is treated as invalid by the decoder
-        sensor_no_number = await number.new_number(
+        configured_number = await number.new_number(
             number_config, min_value=1, max_value=255, step=1
         )
-        await cg.register_parented(sensor_no_number, var)
-        cg.add(var.set_sensor_no_number(sensor_no_number))
+        await cg.register_parented(configured_number, var)
+        cg.add(var.set_configured_sensor_no_number(configured_number))
 
     if accept_config := config.get(CONF_ACCEPT_DRIFT):
         accept_button = await button.new_button(accept_config)

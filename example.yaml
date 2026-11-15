@@ -22,8 +22,8 @@ sensor:
     sensor_no: 77     # WH2 IDs change on battery swap; see drift below
     timeout: 30min    # silence before `online` goes off / drift is allowed
     drift: true       # follow a new ID after `timeout` of silence; snaps back if 77 returns
-    sensor_no_number:
-      name: Deck Sensor ID
+    configured_sensor_no:
+      name: Deck Configured Sensor ID
     active_sensor_no:
       name: Deck Active Sensor ID
     online:

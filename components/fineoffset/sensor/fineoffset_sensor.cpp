@@ -16,7 +16,7 @@ static const char* const TAG = "fineoffset.sensor";
 // (or two), and filters out single noise frames that happen to pass the 8-bit CRC.
 static constexpr uint8_t DRIFT_MIN_PACKETS = 2;
 
-void FineOffsetSensorNoNumber::control(float value) {
+void FineOffsetConfiguredSensorNoNumber::control(float value) {
     // HA enforces min/max/step from the schema, but guard anyway: round and clamp to a valid 8-bit ID.
     const long rounded = std::lround(value);
     if (rounded < 1 || rounded > 255) {
@@ -152,8 +152,8 @@ bool FineOffsetSensor::is_online_() const {
 }
 
 void FineOffsetSensor::publish_status_() {
-    if (this->sensor_no_number_ != nullptr) {
-        this->sensor_no_number_->publish_state(this->configured_);
+    if (this->configured_sensor_no_number_ != nullptr) {
+        this->configured_sensor_no_number_->publish_state(this->configured_);
     }
     if (this->active_sensor_no_sensor_ != nullptr) {
         this->active_sensor_no_sensor_->publish_state(this->active_);
@@ -171,8 +171,8 @@ void FineOffsetSensor::dump_config() {
     ESP_LOGCONFIG(TAG, "  Sensor No: configured=%u active=%u (YAML default %u)", this->configured_, this->active_,
                   this->default_sensor_no_);
     ESP_LOGCONFIG(TAG, "  Timeout: %" PRIu32 "s, Drift: %s", this->timeout_ms_ / 1000, YESNO(this->drift_enabled_));
-    if (this->sensor_no_number_ != nullptr) {
-        LOG_NUMBER("  ", "Sensor No Number", this->sensor_no_number_);
+    if (this->configured_sensor_no_number_ != nullptr) {
+        LOG_NUMBER("  ", "Configured Sensor No", this->configured_sensor_no_number_);
     }
     LOG_SENSOR("  ", "Active Sensor No", this->active_sensor_no_sensor_);
     LOG_BINARY_SENSOR("  ", "Online", this->online_binary_sensor_);
