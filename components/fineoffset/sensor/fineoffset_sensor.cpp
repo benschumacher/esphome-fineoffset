@@ -5,6 +5,8 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
+#include <cinttypes>
+
 namespace esphome {
 namespace fineoffset {
 
@@ -133,7 +135,7 @@ void FineOffsetSensor::evaluate_drift_() {
         return;
     }
 
-    ESP_LOGW(TAG, "sensor_no %u silent for %us; drifting to new ID %u (configured stays %u until accepted)",
+    ESP_LOGW(TAG, "sensor_no %u silent for %" PRIu32 "s; drifting to new ID %u (configured stays %u until accepted)",
              this->active_, silent_ms / 1000, candidate->sensor_id, this->configured_);
     if (!this->is_drifted()) {
         this->drifted_at_ms_ = now;
@@ -168,7 +170,7 @@ void FineOffsetSensor::dump_config() {
     ESP_LOGCONFIG(TAG, "FineOffset Sensor:");
     ESP_LOGCONFIG(TAG, "  Sensor No: configured=%u active=%u (YAML default %u)", this->configured_, this->active_,
                   this->default_sensor_no_);
-    ESP_LOGCONFIG(TAG, "  Timeout: %us, Drift: %s", this->timeout_ms_ / 1000, YESNO(this->drift_enabled_));
+    ESP_LOGCONFIG(TAG, "  Timeout: %" PRIu32 "s, Drift: %s", this->timeout_ms_ / 1000, YESNO(this->drift_enabled_));
     if (this->sensor_no_number_ != nullptr) {
         LOG_NUMBER("  ", "Sensor No Number", this->sensor_no_number_);
     }

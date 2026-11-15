@@ -10,6 +10,8 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <cinttypes>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -354,7 +356,9 @@ void FineOffsetComponent::setup() {
 
 void FineOffsetComponent::schedule_diagnostic_log() {
     this->set_timeout("diagnostic_log", config::DIAGNOSTIC_LOG_INTERVAL_MS, [this]() {
-        ESP_LOGV(TAG, "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%u bad_count_=%u",
+        ESP_LOGV(TAG,
+                 "accept_flag_=%s wh2_flags_=%hhu have_sensor_data_=%d packet_state=%hhu cycles_=%" PRIu32
+                 " bad_count_=%" PRIu32,
                  (this->store_.accept_flag_.load(std::memory_order_relaxed) ? "true" : "false"),
                  this->store_.wh2_flags_.load(std::memory_order_relaxed),
                  this->store_.have_sensor_data_.load(std::memory_order_relaxed),
